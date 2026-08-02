@@ -2277,7 +2277,13 @@ async function saveShares(){
     for (const id of have) if (!want.has(id)) await CLOUD.unshare(state.site.id, id);
     closeSheet();
     toast(want.size ? `Shared with ${want.size}` : 'Sharing removed');
-  } catch(e){ console.error(e); toast('Could not save sharing'); }
+  } catch(e){
+    console.error('sharing failed:', e);
+    const msg = String(e.message || e);
+    toast(/policy|permission|denied/i.test(msg)
+      ? 'The database refused the change — run the sharing fix script'
+      : msg.slice(0, 100));
+  }
 }
 
 /* ---- documents ------------------------------------------------------------ */

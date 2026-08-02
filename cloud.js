@@ -266,9 +266,13 @@ const CLOUD = (() => {
   }
   async function share(projectId, userId, canEdit = true){
     const c = client(); if (!c) throw new Error('offline');
-    const { error } = await c.from('project_shares').upsert({
-      project_id: projectId, user_id: userId, can_edit: canEdit, shared_by: profile && profile.id,
-    });
+    // A plain insert, ignoring anyone already shared with. An upsert would ask
+    // the database for update rights it does not need here.
+    const { error } = await c.from('project_shares')
+      .upsert(
+        { project_id: projectId, user_id: userId, can_edit: canEdit, shared_by: profile && profile.id },
+        { onConflict: 'project_id,user_id', ignoreDuplicates: true },
+      );
     if (error) throw error;
   }
   async function unshare(projectId, userId){
