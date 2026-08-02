@@ -1,7 +1,7 @@
 {
   "name": "SiteCheck Cloud by WRM",
-  "short_name": "SiteCheck",
-  "description": "Offline CDM 2015 site checklists, risk assessments and hazard reports.",
+  "short_name": "SC Cloud",
+  "description": "Multi-user CDM 2015 site records, shared across the team.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
