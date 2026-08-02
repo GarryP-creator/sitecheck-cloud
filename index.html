@@ -87,9 +87,6 @@ header.app{background:var(--ink);color:#fff}
 @media (max-width:560px){ .who{display:none} .syncbtn .netlabel{display:none} }
 .uid{display:block;text-align:left;font-size:10px;font-weight:800;letter-spacing:.2em;
   text-transform:uppercase;color:#8D939A;margin:0 0 6px}
-.uidbox{margin-top:0;margin-bottom:22px;background:#22262B;border-color:#3A3F45;color:#fff;
-  font-size:17px;letter-spacing:.04em;text-align:center}
-.uidbox::placeholder{color:#6B7178}
 .lockmsg{text-align:center;color:var(--stop);font-size:12px;font-weight:700;margin:0 0 14px}
 .lockbtn{display:flex;align-items:center;gap:7px;color:#fff;padding:8px 12px;border-radius:4px;
   border:1.5px solid #3A3F45;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
@@ -426,6 +423,17 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
 
 /* records list still prints from the browser if anyone wants paper */
 @media print{ .actionbar,header.app,.crumb{display:none} }
+
+/* The User ID box sits on the dark lock screen, so it has to override the
+   ordinary input styling — hence the more specific selector and its position
+   at the end of the sheet. */
+input.uidbox{
+  margin-top:0;margin-bottom:22px;
+  background:#22262B;border:2px solid #3A3F45;color:#fff;
+  font-size:17px;letter-spacing:.04em;text-align:center;
+}
+input.uidbox::placeholder{color:#6B7178}
+input.uidbox:focus{border-color:var(--hivis);outline:3px solid rgba(255,212,0,.35)}
 </style>
 
 <div id="app"></div>
@@ -1050,13 +1058,18 @@ async function boot(){
     PDF.init(await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); }));
   } catch(e){ PDF.init(null); }
 
+  // `const` at the top level of a script does not attach to window, so these
+  // have to be checked by name rather than as window properties.
+  const has = n => { try { return typeof eval(n) !== 'undefined'; } catch(e){ return false; } };
   const missing = [
-    !window.PDF || typeof PDF.downloadCombined !== 'function' ? 'pdf.js' : null,
-    !window.XLS ? 'xlsx.js' : null,
-    !window.TALKS ? 'talks.js' : null,
-    typeof ACTIVITIES === 'undefined' ? 'activities.js' : null,
-    typeof METHODS === 'undefined' ? 'methods.js' : null,
-    !window.CLOUD ? 'cloud.js' : null,
+    !has('PDF')        || typeof PDF.downloadCombined !== 'function' ? 'pdf.js' : null,
+    !has('XLS')        ? 'xlsx.js' : null,
+    !has('TALKS')      ? 'talks.js' : null,
+    !has('ACTIVITIES') ? 'activities.js' : null,
+    !has('METHODS')    ? 'methods.js' : null,
+    !has('CLOUD')      ? 'cloud.js' : null,
+    !has('DB')         ? 'db.js' : null,
+    typeof window.supabase === 'undefined' ? 'lib/supabase.js' : null,
   ].filter(Boolean);
   if (missing.length){
     setTimeout(() => toast('Update not finished — close the app fully and reopen'), 800);
