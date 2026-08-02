@@ -158,25 +158,45 @@ const CLOUD = (() => {
   });
 
   /* --- the outbox --------------------------------------------------------- */
+  /* Retrying forever is wrong. A network failure is worth retrying; a row the
+     server rejects as malformed never will be, and hammering it just fills the
+     console and burns battery. So anything rejected outright is set aside after
+     three attempts and reported, rather than looping. */
+  const PERMANENT = /^(22|23|42|PGRST)/;      // bad data, constraint or schema
+
   async function flush(){
     const c = client();
-    if (!c || !navigator.onLine) return { sent:0, left:0 };
+    if (!c || !navigator.onLine) return { sent:0, left:0, failed:0 };
     const jobs = await DB.pending();
-    let sent = 0;
+    let sent = 0, failed = 0;
+
     for (const j of jobs){
       try {
         let error = null;
         if (j.kind === 'project'){ ({ error } = await c.from('projects').upsert(j.row)); }
         if (j.kind === 'record'){
           ({ error } = await c.from('records').insert(j.row));
-          if (error && error.code === '23505') error = null;   // already there
+          if (error && error.code === '23505') error = null;   // already up there
         }
         if (j.kind === 'document'){ ({ error } = await c.from('documents').insert(j.row)); }
-        if (!error){ await DB.done(j.seq); sent++; }
-      } catch(e){ /* leave it queued and try again later */ }
+
+        if (!error){ await DB.done(j.seq); sent++; continue; }
+
+        const permanent = error.code && PERMANENT.test(error.code);
+        const tries = (j.tries || 0) + 1;
+        if (permanent || tries >= 3){
+          console.warn('giving up on a queued item:', j.kind, error.message);
+          await DB.done(j.seq);
+          await DB.set('rejected:' + j.seq, { job: j, error: error.message, at: Date.now() });
+          failed++;
+        } else {
+          await DB.queue({ ...j, tries });
+          await DB.done(j.seq);
+        }
+      } catch(e){ /* offline mid-flush; leave it and try again later */ }
     }
     const left = (await DB.pending()).length;
-    return { sent, left };
+    return { sent, left, failed };
   }
 
   /* --- live updates ------------------------------------------------------
@@ -209,6 +229,27 @@ const CLOUD = (() => {
     if (error) throw error;
     return data || [];
   }
+  /* Creating a login goes through the admin-users function on Supabase, which
+     holds the privileged key. The app never has it, so a superuser is the only
+     one who can add accounts — enforced there, not here. */
+  async function callAdmin(body){
+    const c = client(); if (!c) throw new Error('You need a connection');
+    const { data, error } = await c.functions.invoke('admin-users', { body });
+    if (error){
+      // the function returns a readable reason in the body; surface that
+      let msg = error.message || 'Request failed';
+      try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch(e){}
+      throw new Error(msg);
+    }
+    if (data && data.error) throw new Error(data.error);
+    return data;
+  }
+
+  const createUser  = (userId, pin, fullName, email, role) =>
+    callAdmin({ action:'create', userId, pin, fullName, email, role });
+  const setPin      = (id, userId, pin) => callAdmin({ action:'setpin', id, userId, pin });
+  const setActive   = (id, active)      => callAdmin({ action:'setactive', id, active });
+
   async function saveProfile(p){
     const c = client(); if (!c) throw new Error('offline');
     const { error } = await c.from('profiles').upsert(p);
@@ -299,7 +340,7 @@ const CLOUD = (() => {
     signIn, signOut, restore, me, isSuper, canMakeProjects,
     pullProjects, saveProject, pushRecord, pullRecords, flush,
     startLive, stopLive,
-    listUsers, saveProfile,
+    listUsers, saveProfile, createUser, setPin, setActive,
     listShares, share, unshare,
     uploadDocument, listDocuments, documentUrl, deleteDocument,
     auditFor, deviceId, online,

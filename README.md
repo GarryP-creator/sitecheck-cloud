@@ -57,18 +57,23 @@ It will appear at `https://garryp-creator.github.io/sitecheck-cloud/`
 
 ## Adding people
 
-Two steps, because creating a login needs a privileged key that must never sit
-in a browser.
+**First, deploy the admin function.** Once only.
 
-**First, the login.** Supabase → Authentication → Add user:
+In Supabase → **Edge Functions** → **Deploy a new function** → name it exactly
+`admin-users`, paste in the contents of `admin-users.ts`, and deploy.
 
-- Email: `whitfieldd@wrm.internal` (their User ID, lowercase, plus `@wrm.internal`)
-- Password: `whitfieldd#54321` (same User ID, then `#`, then their PIN)
-- Tick **Auto confirm user**
+That function holds the privileged key that can create logins. It has to live
+on the server, because anything in the browser can be read by anyone using the
+app. It checks on every call that you are signed in *and* that your profile
+says superuser, so the app cannot be talked into creating an account.
 
-**Then the profile.** In the app, sign in as yourself → **People** → **Add a person**.
-Enter the same User ID, their real name, their email if you have it, and a role.
-The screen shows you exactly what to type into Supabase as you go.
+**Then add people in the app.** People → Add a person. Set their User ID, name,
+role and a 5-digit PIN, and they can sign in immediately. The PIN is shown once
+afterwards so you can pass it on — it is not recoverable later, though you can
+set a new one at any time.
+
+Accounts are never deleted, only deactivated, so a name stays readable on
+every record it signed.
 
 ### Roles
 

@@ -319,6 +319,11 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
 .pick input{width:22px;height:22px;flex:0 0 22px;accent-color:var(--go);margin:0}
 .pick .txt{flex:1;min-width:0}
 .pick b{display:block;font-size:14px;line-height:1.25}
+.creds{display:flex;align-items:center;gap:14px;background:var(--plate);border:2px solid var(--ink);
+  border-radius:4px;padding:14px;margin-bottom:10px}
+.creds span{font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-soft);min-width:70px}
+.creds b{font-family:var(--mono);font-size:20px;letter-spacing:.08em}
 .pick small{display:block;color:var(--ink-soft);font-size:11px;margin-top:3px}
 @media (min-width:700px){ .sheetwrap{align-items:center} .sheetbox{border-radius:8px;border-top-width:5px} }
 .toast{
@@ -2118,7 +2123,7 @@ async function submitForm(){
     rec.synced = 1;
     await DB.putRecord(rec);
     paintSync();
-    toast('Saved and shared with the team');
+    toast('Saved to ' + ((state.site||{}).name || 'this project'));
     fileRecordPDF(rec);          // files the signed PDF against the project
   }
 }
@@ -2137,9 +2142,9 @@ function viewUsers(){
       <span class="pill ${u.active?'go':'grey'}">${u.active?'ACTIVE':'OFF'}</span>
     </button>`).join('');
   return crumb('Home',"go('home')",'People') + `<main>
-    <div class="banner"><b>Adding someone</b>
-      Create their login in the Supabase dashboard first (Authentication &rarr; Add user),
-      then add their profile here so the app knows their name and role.</div>
+    <div class="banner"><b>Accounts</b>
+      Add someone here and they can sign in straight away with the User ID and PIN you set.
+      Share a project with them and it appears on their device.</div>
     <div class="eyebrow">Accounts &middot; ${(state.users||[]).length}</div>
     ${rows || '<div class="empty"><b>No profiles yet</b></div>'}
     <div class="eyebrow">Add</div>
@@ -2156,76 +2161,90 @@ async function openUsers(){
 function newUser(){ userForm(null); }
 function editUser(id){ userForm((state.users||[]).find(u => u.id === id)); }
 
+/* One screen, one step. The account and the profile are created together by
+   the admin-users function, so nobody has to touch the Supabase dashboard. */
 function userForm(u){
   const isNew = !u;
   openSheet(isNew ? 'Add a person' : 'Edit ' + u.user_id, `
     <div class="q"><label class="qt">User ID</label>
       <p class="guide">What they type at the keypad. Letters, numbers, dots, hyphens or underscores.</p>
-      <input type="text" id="u_id" value="${esc(u?u.user_id:'')}" placeholder="e.g. WhitfieldD" ${u?'disabled':''}></div>
+      <input type="text" id="u_id" value="${esc(u?u.user_id:'')}" placeholder="e.g. WhitfieldD"
+             autocapitalize="none" autocorrect="off" ${u?'disabled':''}></div>
+
     <div class="q"><label class="qt">Full name</label>
       <input type="text" id="u_name" value="${esc(u?u.full_name:'')}" placeholder="Dave Whitfield"></div>
+
+    <div class="q"><label class="qt">${isNew ? 'PIN' : 'New PIN'}</label>
+      <p class="guide">${isNew ? 'Five digits. Write it down — you will need to give it to them.'
+                               : 'Leave blank to keep their current PIN.'}</p>
+      <input type="text" id="u_pin" inputmode="numeric" maxlength="5" placeholder="e.g. 40217"></div>
+
     <div class="q"><label class="qt">Email (optional)</label>
       <p class="guide">Their real address, for notifications later. Not used to sign in.</p>
       <input type="text" id="u_email" value="${esc(u&&u.email?u.email:'')}" placeholder="dave@example.com"></div>
+
     <div class="q"><label class="qt">Role</label>
       <select id="u_role">
         ${['site','manager','superuser'].map(r=>`<option value="${r}"${u&&u.role===r?' selected':''}>${
           r==='site'?'Site — records on projects shared with them'
-          : r==='manager'?'Manager — creates projects, sees everything shared'
+          : r==='manager'?'Manager — creates projects and shares them'
           : 'Superuser — everything, including people'}</option>`).join('')}
       </select></div>
-    ${u ? `<div class="q"><label class="qt">Status</label>
-      <select id="u_active"><option value="1"${u.active?' selected':''}>Active</option>
-      <option value="0"${!u.active?' selected':''}>Deactivated</option></select></div>` : ''}
-    ${isNew ? `<div class="banner" id="u_hint"><b>Create the login first</b>
-      Enter a User ID above and this will tell you exactly what to put into Supabase.</div>` : ''}
-    <button class="btn go" onclick="saveUser(${isNew?'null':`'${u.id}'`})">${isNew?'Save profile':'Save changes'}</button>`);
 
-  if (isNew){
-    const idBox = document.getElementById('u_id');
-    idBox.addEventListener('input', () => {
-      const v = idBox.value.trim();
-      const hint = document.getElementById('u_hint');
-      if (!hint) return;
-      hint.innerHTML = CLOUD.validId(v)
-        ? `<b>In Supabase &rarr; Authentication &rarr; Add user</b>
-           Email: <code>${esc(CLOUD.emailFor(v))}</code><br>
-           Password: <code>${esc(v.toLowerCase())}#<i>PIN</i></code> &mdash; replace <i>PIN</i> with their 5 digits<br>
-           Tick <b>Auto confirm user</b>.`
-        : `<b>Not a valid User ID</b> Letters, numbers, dots, hyphens or underscores, 3 characters or more.`;
-    });
-  }
+    ${u && u.id !== (state.profile||{}).id ? `<div class="q"><label class="qt">Status</label>
+      <select id="u_active"><option value="1"${u.active?' selected':''}>Active</option>
+      <option value="0"${!u.active?' selected':''}>Deactivated — cannot sign in</option></select>
+      <p class="guide">Deactivating keeps their name on everything they signed. Accounts are never deleted.</p>
+      </div>` : ''}
+
+    <button class="btn go" id="u_save" onclick="saveUser(${isNew?'null':`'${u.id}'`})">
+      ${isNew?'Create account':'Save changes'}</button>`);
 }
 
 async function saveUser(existingId){
-  const idBox = document.getElementById('u_id');
-  const userId = (idBox.value || '').trim();
-  const name = (document.getElementById('u_name').value || '').trim();
-  const email = (document.getElementById('u_email').value || '').trim();
-  const role = document.getElementById('u_role').value;
+  const btn = document.getElementById('u_save');
+  const val = id => (document.getElementById(id) || {}).value || '';
+  const userId = val('u_id').trim();
+  const name   = val('u_name').trim();
+  const pin    = val('u_pin').trim();
+  const email  = val('u_email').trim();
+  const role   = val('u_role');
   const activeBox = document.getElementById('u_active');
 
-  if (!CLOUD.validId(userId)){ toast('Check the User ID'); return; }
-  if (!name){ toast('Enter their name'); return; }
+  if (!CLOUD.validId(userId)){ toast('User ID: 3+ letters, numbers, dots, hyphens or underscores'); return; }
+  if (!name){ toast('Enter their full name'); return; }
+  if (!existingId && !/^\d{5}$/.test(pin)){ toast('The PIN must be exactly 5 digits'); return; }
+  if (existingId && pin && !/^\d{5}$/.test(pin)){ toast('The PIN must be exactly 5 digits'); return; }
 
+  if (btn){ btn.disabled = true; btn.textContent = 'Working…'; }
   try {
-    if (existingId){
-      await CLOUD.saveProfile({ id: existingId, user_id: userId, full_name: name,
-        email: email || null, role, active: activeBox ? activeBox.value === '1' : true });
+    if (!existingId){
+      await CLOUD.createUser(userId, pin, name, email, role);
+      closeSheet();
+      openSheet('Account created', `
+        <p class="sheetnote">Give these to <b>${esc(name)}</b>. The PIN is not shown again.</p>
+        <div class="creds"><span>User ID</span><b>${esc(userId)}</b></div>
+        <div class="creds"><span>PIN</span><b>${esc(pin)}</b></div>
+        <p class="sheetnote">They sign in at the same address as you. Share a project with
+          them and it will appear on their device.</p>
+        <button class="btn go" onclick="closeSheet()">Done</button>`);
     } else {
-      // the login must exist first: the profile id is a foreign key onto it
-      await CLOUD.saveProfile({ user_id: userId, full_name: name,
-        email: email || null, role, active: true });
+      await CLOUD.saveProfile({ id: existingId, user_id: userId, full_name: name,
+        email: email || null, role,
+        active: activeBox ? activeBox.value === '1' : true });
+      if (pin) await CLOUD.setPin(existingId, userId, pin);
+      closeSheet();
+      toast(pin ? 'Saved — new PIN set' : 'Saved');
     }
-    closeSheet();
     state.users = await CLOUD.listUsers();
     render();
-    toast('Saved');
   } catch(e){
     console.error(e);
-    toast(e.message && e.message.includes('foreign key')
-      ? 'Create their login in Supabase first, then save this again'
-      : 'Could not save — see console');
+    const msg = String(e.message || e);
+    toast(/Failed to send|fetch/i.test(msg)
+      ? 'Could not reach the admin function — has it been deployed?'
+      : msg.slice(0, 110));
+    if (btn){ btn.disabled = false; btn.textContent = existingId ? 'Save changes' : 'Create account'; }
   }
 }
 
