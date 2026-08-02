@@ -1280,15 +1280,28 @@ async function tryLogin(){
     await set('lastUid', id);
     await afterLogin(prof);
   } catch(e){
-    state.fails = (state.fails||0) + 1;
-    if (state.fails >= 5){
-      state.lockUntil = Date.now() + 3*60*1000;
-      state.loginMsg = 'Locked for 3 minutes';
-      setTimeout(()=>{ state.lockUntil = 0; state.fails = 0; render(); }, 3*60*1000);
+    console.error('sign-in failed:', e);
+    const msg = String(e && e.message || e);
+
+    // Only count it as a wrong PIN if that is genuinely what happened.
+    // Anything else is a fault worth naming, not a locked-out user.
+    const badPin = /invalid login|invalid_credentials|bad_jwt/i.test(msg);
+
+    if (!navigator.onLine){
+      state.loginMsg = 'No connection — the first sign-in needs signal';
+    } else if (!badPin){
+      state.loginMsg = /permission denied|42501/i.test(msg)
+        ? 'Signed in, but the database is refusing access. Check the setup script has been run.'
+        : msg.slice(0, 90);
     } else {
-      state.loginMsg = navigator.onLine
-        ? `Wrong User ID or PIN (${5-state.fails} left)`
-        : 'No connection — first sign-in needs signal';
+      state.fails = (state.fails||0) + 1;
+      if (state.fails >= 5){
+        state.lockUntil = Date.now() + 3*60*1000;
+        state.loginMsg = 'Too many attempts — locked for 3 minutes';
+        setTimeout(()=>{ state.lockUntil = 0; state.fails = 0; render(); }, 3*60*1000);
+      } else {
+        state.loginMsg = `Wrong User ID or PIN (${5-state.fails} left)`;
+      }
     }
     render();
   }
@@ -1307,6 +1320,48 @@ async function lock(){
   state.profile = null; state.pin=''; state.view='login';
   state.uid = await get('lastUid') || '';
   render();
+}
+
+/* ---- projects ------------------------------------------------------------
+   The list comes from the server, so a project created on a laptop appears
+   here on a phone. Only managers and superusers can create one.        */
+function viewProjects(){
+  const back = state.site ? crumb('Home',"go('home')",'Projects') : '';
+  const mine = state.projects || [];
+  const list = mine.map(pj => `
+    <button class="row" onclick="pickProject('${pj.id}')">
+      <span class="code">${esc((pj.ref||pj.name||'?').slice(-8).toUpperCase())}</span>
+      <span class="txt"><b>${esc(pj.name)}</b><small>${esc(pj.address||'No address')}</small></span>
+      ${state.site && state.site.id===pj.id ? '<span class="pill go">CURRENT</span>' : ''}
+    </button>`).join('');
+  return back + `<main>
+    ${mine.length ? '<div class="eyebrow">Choose a project</div>' + list
+      : `<div class="banner"><b>No projects yet</b>
+          ${CLOUD.canMakeProjects()
+            ? 'Set one up and every form you fill in will carry its details.'
+            : 'Nothing has been shared with you yet. Ask a manager to share a project.'}</div>`}
+    ${CLOUD.canMakeProjects() ? `
+      <div class="eyebrow">Add</div>
+      <button class="btn primary" onclick="newProject()">+ New project</button>` : ''}
+    <div class="eyebrow">Account</div>
+    <div class="row" style="pointer-events:none">
+      <span class="txt"><b>${esc((state.profile||{}).full_name || '')}</b>
+        <small>${esc((state.profile||{}).user_id || '')} &middot; ${esc((state.profile||{}).role || '')}</small></span>
+    </div>
+    <button class="btn ghost" onclick="syncNow()">Refresh from the server</button>
+  </main>`;
+}
+
+async function pickProject(id){
+  state.site = (state.projects||[]).find(x => x.id === id) || null;
+  await set('current', id);
+  state.q = '';
+  go('home');
+}
+
+function newProject(){
+  if (!CLOUD.canMakeProjects()){ toast('Only managers and superusers can create projects'); return; }
+  state.editing = 'new'; state.view = 'site'; render();
 }
 
 /* ---- home ---- *//* ---- home ---- */
