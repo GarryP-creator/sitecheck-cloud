@@ -1,0 +1,2844 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SiteCheck Cloud by WRM</title>
+<meta name="theme-color" content="#14171A">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<link rel="icon" href="./icons/favicon.svg" type="image/svg+xml">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SiteCheck">
+<meta name="description" content="Offline CDM 2015 site checklists, risk assessments and hazard reports.">
+
+<style>
+/* ============================================================
+   SiteCheck by WRM — CDM 2015 site compliance
+   Palette grounded in BS EN ISO 7010 safety signage:
+   green = safe condition, red = prohibition, amber = warning,
+   blue = mandatory. Pass/Fail/NA inherit real sign semantics.
+   No webfonts anywhere — the app must run with no network.
+   ============================================================ */
+:root{
+  --concrete:#E7E5DF;
+  --plate:#FBFAF7;
+  --ink:#14171A;
+  --ink-soft:#5B6068;
+  --line:#C9C6BE;
+  --hivis:#FFD400;
+  --go:#007A33;
+  --stop:#C8102E;
+  --warn:#E07B00;
+  --duty:#0057B8;
+  --shadow:0 1px 0 rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--sans);background:var(--concrete);color:var(--ink);
+  font-size:16px;line-height:1.45;
+  padding-bottom:env(safe-area-inset-bottom);
+  -webkit-text-size-adjust:100%;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:none;background:none}
+
+/* --- hazard tape: the signature device, used only on the header --- */
+.tape{
+  height:10px;
+  background:repeating-linear-gradient(-45deg,var(--hivis) 0 14px,var(--ink) 14px 28px);
+}
+header.app{background:var(--ink);color:#fff}
+.hd{display:flex;align-items:center;gap:12px;padding:14px 16px}
+.hd h1{
+  margin:0;font-size:15px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+}
+.hd h1 small{display:block;font-size:10px;letter-spacing:.24em;color:var(--hivis);font-weight:700;margin-top:2px}
+.mark{width:40px;height:40px;flex:0 0 40px;border-radius:7px;overflow:hidden;display:block}
+.mark svg{width:100%;height:100%;display:block}
+.hd .right{margin-left:auto;display:flex;align-items:center;gap:10px}
+/* masthead tagline — only where there is genuinely room for it */
+.tagline{display:none}
+@media (min-width:900px){
+  /* sits just left of the app name, divided from it by a hi-vis rule */
+  .tagline{display:flex;align-items:center;gap:16px;flex:1;justify-content:flex-start;
+    margin-left:20px;color:#EDEBE5;font-size:16px;font-weight:700;letter-spacing:.01em;
+    white-space:nowrap;overflow:hidden}
+  .tagline i{width:3px;height:26px;background:var(--hivis);flex:0 0 3px;border-radius:2px}
+  /* shown up top, so drop the one at the foot of the home screen */
+  .signoff .tag{display:none}
+  .signoff{margin-top:34px}
+}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--go)}
+.dot.off{background:var(--warn)}
+.netlabel{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#B9BDC2}
+.syncbtn{display:flex;align-items:center;gap:8px;padding:7px 11px;border-radius:4px;border:1.5px solid #3A3F45}
+.syncbtn:active{background:#2A2E33}
+.syncbtn:disabled{opacity:.6}
+.dot.warn{background:var(--warn)}
+.dot.sync{background:var(--duty);animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+.who{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--hivis);
+  text-transform:uppercase;padding:6px 9px;border:1.5px solid #3A3F45;border-radius:4px}
+@media (max-width:560px){ .who{display:none} .syncbtn .netlabel{display:none} }
+.uid{display:block;text-align:left;font-size:10px;font-weight:800;letter-spacing:.2em;
+  text-transform:uppercase;color:#8D939A;margin:0 0 6px}
+.uidbox{margin-top:0;margin-bottom:22px;background:#22262B;border-color:#3A3F45;color:#fff;
+  font-size:17px;letter-spacing:.04em;text-align:center}
+.uidbox::placeholder{color:#6B7178}
+.lockmsg{text-align:center;color:var(--stop);font-size:12px;font-weight:700;margin:0 0 14px}
+.lockbtn{display:flex;align-items:center;gap:7px;color:#fff;padding:8px 12px;border-radius:4px;
+  border:1.5px solid #3A3F45;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+.lockbtn:active{background:var(--hivis);border-color:var(--hivis);color:var(--ink)}
+@media (max-width:430px){ .lockbtn span{display:none} .lockbtn{padding:8px 10px} }
+
+/* --- back bar --- */
+.crumb{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;
+  background:var(--ink);color:#fff;border-top:1px solid #2A2E33;
+  position:sticky;top:0;z-index:25;
+}
+.crumb button{margin:-6px 0 -6px -6px;padding:6px}
+.brand{display:flex;align-items:center;gap:12px;flex:0 0 auto;min-width:0;text-align:left;
+  padding:6px;margin:-6px;border-radius:6px;background:none;cursor:pointer}
+.brand:active{background:#22262B}
+.crumb button{color:var(--hivis);font-weight:700;font-size:14px;letter-spacing:.04em;display:flex;align-items:center;gap:6px}
+.crumb span{font-family:var(--mono);font-size:11px;color:#9AA0A6;margin-left:auto;letter-spacing:.06em}
+
+main{max-width:600px;margin:0 auto;padding:16px 16px 120px}
+
+/* --- stencil section labels --- */
+.eyebrow{
+  display:flex;align-items:center;gap:10px;
+  font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft);
+  margin:26px 0 12px;
+}
+.eyebrow::after{content:"";flex:1;height:2px;background:var(--line)}
+.eyebrow:first-child{margin-top:6px}
+
+/* --- tiles as signage plates --- */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{
+  background:var(--plate);border-radius:4px;box-shadow:var(--shadow);
+  text-align:left;overflow:hidden;display:flex;flex-direction:column;
+  min-height:132px;border:1px solid var(--line);
+  transition:transform .08s ease;
+}
+.tile:active{transform:scale(.975)}
+.tile .bar{height:6px;background:var(--duty)}
+.tile .body{padding:14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.tile svg{width:30px;height:30px}
+.tile b{font-size:15px;font-weight:800;letter-spacing:.01em;display:block;line-height:1.2}
+.tile p{margin:0;font-size:12px;color:var(--ink-soft);line-height:1.35}
+.tile .count{
+  margin-top:auto;font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-soft);
+}
+.tile.wide{grid-column:1 / -1;min-height:0}
+.tile.wide .body{flex-direction:row;align-items:center;gap:14px}
+.tile.wide .txt{flex:1}
+
+/* --- list rows --- */
+.row{
+  width:100%;display:flex;align-items:center;gap:12px;text-align:left;
+  background:var(--plate);border:1px solid var(--line);border-radius:4px;
+  padding:14px;margin-bottom:10px;box-shadow:var(--shadow);
+}
+.row:active{background:#F1EFEA}
+.row .code{
+  font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;
+  background:var(--ink);color:var(--hivis);padding:4px 6px;border-radius:3px;flex:0 0 auto;
+}
+.row .txt{flex:1;min-width:0}
+.row b{display:block;font-size:15px;font-weight:700;line-height:1.25}
+.row small{display:block;color:var(--ink-soft);font-size:12px;margin-top:3px}
+.row .chev{color:var(--ink-soft);flex:0 0 auto}
+.row .mini{flex:0 0 auto;border:2px solid var(--ink);border-radius:3px;padding:9px 11px;
+  font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.row .mini:active{background:var(--ink);color:var(--hivis)}
+.row .tap{display:flex;align-items:center;gap:12px;flex:1;min-width:0;text-align:left;background:none;padding:0}
+
+/* --- form questions --- */
+.q{background:var(--plate);border:1px solid var(--line);border-radius:4px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
+.q .num{font-family:var(--mono);font-size:11px;color:var(--ink-soft);letter-spacing:.08em;display:block;margin-bottom:4px}
+.q label.qt{display:block;font-weight:600;font-size:15px;line-height:1.35;margin-bottom:4px}
+.talkq{border-left:5px solid #0B7285}
+.talkq .why{font-size:13.5px;line-height:1.5;margin:8px 0 4px;color:#2C3136}
+.talkq .tsec{font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-soft);margin:16px 0 6px}
+.talkq .tlist{margin:0;padding-left:20px;font-size:13.5px;line-height:1.5}
+.talkq .tlist li{margin-bottom:7px}
+.talkq .tgrid{display:grid;grid-template-columns:1fr;gap:14px;margin-top:14px}
+@media (min-width:620px) and (max-width:899px){
+  .talkq .tgrid{grid-template-columns:1fr 1fr}
+  .talkq .tcol{grid-column:1 / -1}
+}
+/* on a laptop: the talk, then do and do-not, side by side across the page */
+@media (min-width:900px){
+  .talkq .tgrid{grid-template-columns:1.4fr 1fr 1fr;gap:22px;align-items:start}
+  .talkq .why{max-width:80ch;font-size:14.5px}
+  .talkq .tcol .tsec{margin-top:0}
+  .talkq .ask{columns:2;column-gap:26px}
+  .talkq .ask li{break-inside:avoid}
+}
+.talkq .ddcol{border-radius:4px;padding:12px 14px}
+.talkq .ddcol h5{margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+.talkq .ddcol ul{margin:0;padding-left:17px;font-size:13px;line-height:1.45}
+.talkq .ddcol li{margin-bottom:6px}
+.talkq .do{background:#EBF5EE;border:1px solid #BEDFC8}
+.talkq .do h5{color:var(--go)}
+.talkq .dont{background:#FCEBEE;border:1px solid #F2C4CC}
+.talkq .dont h5{color:var(--stop)}
+.talkq .tref{font-size:11px;color:var(--ink-soft);font-style:italic;margin:14px 0 4px}
+.talkq .btn{margin-top:10px}
+.q .guide{font-size:12px;color:var(--ink-soft);border-left:3px solid var(--line);padding-left:9px;margin:8px 0 0}
+.req{color:var(--stop);font-weight:800}
+
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.seg button{
+  border:2px solid var(--line);background:#fff;border-radius:3px;
+  padding:14px 4px;font-weight:800;font-size:13px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-soft);
+}
+.seg button[aria-pressed="true"][data-v="pass"]{background:var(--go);border-color:var(--go);color:#fff}
+.seg button[aria-pressed="true"][data-v="fail"]{background:var(--stop);border-color:var(--stop);color:#fff}
+.seg button[aria-pressed="true"][data-v="na"]{background:var(--ink-soft);border-color:var(--ink-soft);color:#fff}
+
+input[type=text],input[type=number],input[type=date],input[type=tel],input[type=password],select,textarea{
+  width:100%;padding:13px;border:2px solid var(--line);border-radius:3px;background:#fff;
+  margin-top:10px;
+}
+textarea{min-height:88px;resize:vertical}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid var(--duty);outline-offset:1px}
+.note{margin-top:10px}
+.note input{margin-top:0}
+
+/* risk matrix */
+.risk{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-top:12px}
+.risk label{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+.risk select{margin-top:6px}
+.score{
+  min-width:76px;text-align:center;padding:11px 8px;border-radius:3px;color:#fff;
+  font-family:var(--mono);font-weight:800;font-size:15px;line-height:1.1;
+}
+.score.med{color:var(--ink)}
+.score small{display:block;font-size:9px;letter-spacing:.08em;opacity:.9}
+
+/* repeat rows */
+.rep{border:2px dashed var(--line);border-radius:4px;padding:14px;margin-top:14px;background:#fff}
+.rep h4{margin:0 0 12px;font-family:var(--mono);font-size:11px;letter-spacing:.1em;
+  color:var(--ink-soft);text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.rep .del{color:var(--stop);font-size:12px;font-weight:700;margin-top:8px}
+
+/* photos + signature */
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.attach{display:flex;align-items:center;gap:11px;background:#fff;border:2px solid var(--line);
+  border-radius:3px;padding:11px 12px;margin-top:10px}
+.attach svg{color:var(--duty);flex:0 0 auto}
+.attach .txt{flex:1;min-width:0}
+.attach b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attach small{color:var(--ink-soft);font-size:11px}
+.attach button{flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:var(--ink);
+  color:var(--hivis);font-size:16px;font-weight:700;line-height:1}
+.thumbs figure{margin:0;position:relative}
+.thumbs img{width:78px;height:78px;object-fit:cover;border-radius:3px;border:2px solid var(--line);display:block}
+.thumbs button{position:absolute;top:-7px;right:-7px;background:var(--stop);color:#fff;width:24px;height:24px;border-radius:50%;font-weight:800;font-size:14px;line-height:1}
+/* signature: a tappable box, signed in a pop-up so the page still scrolls */
+.signwrap{margin-top:10px}
+.signbox{width:100%;min-height:84px;background:#fff;border:2px dashed var(--line);border-radius:3px;
+  display:flex;align-items:center;justify-content:center;padding:8px}
+.signbox.signed{border-style:solid;min-height:0}
+.signbox span{display:flex;align-items:center;gap:8px;color:var(--ink-soft);
+  font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.signbox img{max-height:74px;max-width:100%;display:block}
+.signbox:active{background:#F1EFEA}
+.signclear{margin-top:8px;color:var(--stop);font-size:11px;font-weight:800;
+  letter-spacing:.1em;text-transform:uppercase;text-decoration:underline}
+
+.signmodal{position:fixed;inset:0;z-index:90;background:rgba(20,23,26,.72);
+  display:flex;align-items:center;justify-content:center;padding:16px}
+.signpanel{background:var(--plate);border-radius:6px;border-top:6px solid var(--hivis);
+  width:100%;max-width:680px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.signhead b{display:block;font-size:14px;letter-spacing:.1em;text-transform:uppercase}
+.signhead span{font-size:12px;color:var(--ink-soft)}
+#padbig{width:100%;height:min(46vh,300px);background:#fff;border:2px solid var(--line);
+  border-radius:3px;touch-action:none;display:block;cursor:crosshair}
+.signfoot{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:8px}
+.signfoot .btn{padding:14px;margin:0}
+@media (orientation:landscape) and (max-height:520px){ #padbig{height:38vh} .signpanel{padding:10px;gap:8px} }
+
+/* buttons */
+.btn{
+  display:block;width:100%;padding:17px;border-radius:3px;font-weight:800;
+  letter-spacing:.1em;text-transform:uppercase;font-size:14px;text-align:center;
+}
+.btn.primary{background:var(--ink);color:var(--hivis)}
+.btn.go{background:var(--go);color:#fff}
+.btn.ghost{background:transparent;color:var(--ink);border:2px solid var(--ink)}
+.btn.danger{background:transparent;color:var(--stop);border:2px solid var(--stop)}
+.btn:active{opacity:.85}
+.btn+.btn{margin-top:10px}
+
+.actionbar{
+  position:fixed;left:0;right:0;bottom:0;background:var(--plate);
+  border-top:2px solid var(--ink);padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  z-index:20;
+}
+.actionbar .inner{max-width:600px;margin:0 auto}
+.progress{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-soft);
+  text-align:center;margin-bottom:9px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.draftnote{color:var(--go)}
+
+/* status pills */
+.pill{
+  display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:2px;color:#fff;
+}
+.pill.go{background:var(--go)} .pill.stop{background:var(--stop)}
+.pill.warn{background:var(--warn)} .pill.grey{background:var(--ink-soft)}
+
+.empty{text-align:center;padding:48px 20px;color:var(--ink-soft)}
+.empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:6px}
+.banner{
+  background:#FFF6D6;border:2px solid var(--hivis);border-radius:4px;padding:12px 14px;
+  font-size:13px;margin-bottom:16px;
+}
+.banner b{display:block;margin-bottom:3px}
+.sheetwrap{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center}
+.sheetbg{position:absolute;inset:0;background:rgba(20,23,26,.55)}
+.sheetbox{position:relative;background:var(--concrete);width:100%;max-width:600px;
+  border-top:5px solid var(--hivis);border-radius:8px 8px 0 0;padding:20px 16px
+  calc(20px + env(safe-area-inset-bottom));max-height:78vh;overflow:auto}
+.sheetbox h3{margin:0 0 10px;font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+.sheetnote{font-size:13px;color:var(--ink-soft);margin:0 0 14px;line-height:1.45}
+.sheetnote b{color:var(--ink)}
+.pick{display:flex;align-items:center;gap:13px;background:var(--plate);border:1px solid var(--line);
+  border-radius:4px;padding:13px 14px;margin-bottom:10px;cursor:pointer}
+.pick:has(input:checked){border-color:var(--ink);border-width:2px;padding:12px 13px}
+.pick input{width:22px;height:22px;flex:0 0 22px;accent-color:var(--go);margin:0}
+.pick .txt{flex:1;min-width:0}
+.pick b{display:block;font-size:14px;line-height:1.25}
+.pick small{display:block;color:var(--ink-soft);font-size:11px;margin-top:3px}
+@media (min-width:700px){ .sheetwrap{align-items:center} .sheetbox{border-radius:8px;border-top-width:5px} }
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:110px;z-index:60;
+  background:var(--ink);color:#fff;padding:13px 20px;border-radius:3px;font-size:14px;font-weight:600;
+  box-shadow:0 6px 24px rgba(0,0,0,.3);max-width:88%;text-align:center;
+}
+@media (prefers-reduced-motion:no-preference){
+  .toast{animation:pop .18s ease}
+  @keyframes pop{from{opacity:0;transform:translate(-50%,8px)}}
+}
+
+/* login */
+.lockwrap{background:var(--ink);min-height:100vh}
+.login{max-width:360px;margin:0 auto;padding:46px 24px 44px}
+.login .mark{width:132px;height:132px;margin:0 auto 28px;border-radius:29px;box-shadow:0 10px 34px rgba(0,0,0,.55)}
+.signoff{margin:42px 0 10px;text-align:center}
+.signoff .tag{position:relative;margin:0 auto 16px;padding-top:19px;max-width:16em;
+  font-size:16px;font-weight:700;line-height:1.4;color:var(--ink)}
+.signoff .tag::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:36px;height:3px;background:var(--hivis)}
+.signoff .mk{display:flex;align-items:center;justify-content:center;gap:10px;opacity:.45}
+.signoff .m{width:24px;height:24px;border-radius:5px;overflow:hidden;flex:0 0 24px}
+.signoff .m svg{width:100%;height:100%;display:block}
+.signoff .mk span{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+.login h2{text-align:center;color:#fff;font-size:21px;letter-spacing:.16em;text-transform:uppercase;margin:0 0 8px}
+.login .by{text-align:center;font-size:10px;letter-spacing:.36em;font-weight:800;color:#8D939A;margin:0 0 26px;text-transform:uppercase}
+.login .by b{color:var(--hivis)}
+.login p.sub{text-align:center;color:#8D939A;font-size:13px;margin:0 0 28px}
+.login .strap{text-align:center;color:#E4E2DC;font-size:15px;line-height:1.45;
+  margin:0 auto 30px;max-width:17em;position:relative;padding-top:20px}
+.login .strap::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:34px;height:3px;background:var(--hivis)}
+.pins{display:flex;gap:12px;justify-content:center;margin-bottom:22px}
+.pins i{width:16px;height:16px;border-radius:50%;border:2px solid #5B6068;display:block}
+.pins i.on{background:var(--hivis);border-color:var(--hivis)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.pad button{background:#22262B;border:1px solid #363B41;color:#fff;border-radius:4px;padding:19px 0;font-size:22px;font-weight:700}
+.pad button:active{background:var(--hivis);border-color:var(--hivis);color:var(--ink)}
+
+/* search */
+.searchbar{position:relative;margin-bottom:4px}
+.searchbar input{margin-top:0;padding-left:42px;border-radius:3px;font-size:16px}
+.searchbar svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--ink-soft)}
+.searchbar .clr{position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  padding:8px 12px;color:var(--ink-soft);font-size:19px;font-weight:700}
+.where{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  background:var(--concrete);border:1px solid var(--line);color:var(--ink-soft);padding:3px 6px;border-radius:2px}
+.hit small em{font-style:normal;background:#FFF0A8;padding:0 2px}
+
+/* project bar */
+.projbar{display:flex;align-items:center;gap:12px;background:var(--plate);border:1px solid var(--line);
+  border-left:5px solid var(--hivis);border-radius:4px;padding:12px 14px;margin-bottom:16px;box-shadow:var(--shadow)}
+.projbar .txt{flex:1;min-width:0}
+.projbar b{display:block;font-size:15px;line-height:1.2}
+.projbar small{display:block;color:var(--ink-soft);font-size:12px;margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.projbar button{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink);border:2px solid var(--ink);border-radius:3px;padding:8px 10px;flex:0 0 auto}
+
+/* ---------- larger screens: iPad and desktop ---------- */
+@media (min-width:700px) and (max-width:899px){
+  main{max-width:760px}
+  /* same shape as the desktop layout, slightly tighter */
+  .fldgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;align-items:start}
+  .fld{min-width:0}
+  .fld-textarea,.fld-risk{grid-column:1 / -1}
+  .fld-risk{max-width:400px}
+  .fldgrid textarea{min-height:112px;line-height:1.5}
+  .tiles{grid-template-columns:repeat(3,1fr)}
+  .actionbar .inner{max-width:760px}
+}
+@media (min-width:900px){
+  main{max-width:940px}
+  /* only forms and lists split into two columns — never the home screen */
+  main.two{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-items:start}
+  main.two>.eyebrow,main.two>.banner,main.two>.signoff,
+  main.two>.empty,main.two>.btn,main.two>.wide{grid-column:1 / -1}
+
+  /* Short answers pair up two to a line; anything long — control measures,
+     actions, method steps — takes the full width, because that is where the
+     reading happens. */
+  .fldgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px 22px;align-items:start}
+  .fld{min-width:0}
+  .fld-textarea{grid-column:1 / -1}
+  .fld-risk{grid-column:1 / -1;max-width:400px}
+  .fld input,.fld textarea{margin-top:6px}
+  .fldgrid textarea{min-height:132px;line-height:1.5}
+  .tiles{grid-template-columns:repeat(3,1fr)}
+  .actionbar .inner{max-width:940px;display:flex;gap:12px;align-items:center}
+  .actionbar .inner .progress{margin:0 auto 0 0}
+  .actionbar .inner .btn{width:auto;min-width:230px}
+  .actionbar .inner .btn+.btn{margin-top:0}
+  .q{margin-bottom:16px}
+  .login{padding-top:8vh}
+}
+/* installed to the home screen: pad past the status bar */
+.standalone .hd{padding-top:calc(14px + env(safe-area-inset-top))}
+.standalone .lockwrap{padding-top:env(safe-area-inset-top)}
+.hint button{margin-top:10px;font-weight:800;font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-soft);text-decoration:underline}
+
+/* records list still prints from the browser if anyone wants paper */
+@media print{ .actionbar,header.app,.crumb{display:none} }
+</style>
+
+<div id="app"></div>
+<script src="./lib/supabase.js"></script>
+<script src="./db.js"></script>
+<script src="./cloud.js"></script>
+<script src="./lib/jspdf.umd.min.js"></script>
+<script src="./pdf.js"></script>
+<script src="./xlsx.js"></script>
+<script src="./talks.js"></script>
+<script src="./activities.js"></script>
+<script src="./methods.js"></script>
+
+<script>
+/* =====================================================================
+   1. STORAGE — IndexedDB, via db.js. Everything lands on the device first
+      and syncs afterwards, so nothing is lost without a signal.
+   ===================================================================== */
+async function initStore(){ await DB.open(); await DB.migrate(); }
+const get = k => DB.get(k);
+const set = (k, v) => DB.set(k, v);
+
+/* =====================================================================
+   2. FORM LIBRARY
+      Everything the app can do is defined here. To add a new checklist,
+      copy a block and change the questions — no other code changes.
+      item types: check | text | textarea | number | date | select
+                  | photo | risk | repeat
+   ===================================================================== */
+const FORMS = [
+{
+  id:'f01', code:'F01', cat:'checklist',
+  title:'Site Set-Up / Pre-Start Checklist',
+  desc:'Complete before works begin on any new site',
+  sections:[
+    {title:'Notification & documents', items:[
+      {id:'a1',type:'check',text:'F10 notification submitted to HSE where the project is notifiable',
+       guide:'Notifiable if the work lasts longer than 30 working days AND has more than 20 workers on site at any one time, or exceeds 500 person days.'},
+      {id:'a2',type:'check',text:'Copy of the F10 displayed where workers can read it'},
+      {id:'a3',type:'check',text:'Construction Phase Plan in place, site-specific and available on site',
+       guide:'Required for every project, notifiable or not, before the construction phase starts.'},
+      {id:'a4',type:'check',text:'Pre-Construction Information received from the client / Principal Designer'},
+      {id:'a5',type:'check',text:'Arrangements agreed for the Health & Safety File'},
+    ]},
+    {title:'Site set-up', items:[
+      {id:'b1',type:'check',text:'Site boundary secure — hoarding, fencing and gates in good order'},
+      {id:'b2',type:'check',text:'Site signage in place at all entrances (site rules, PPE, no unauthorised entry)'},
+      {id:'b3',type:'check',text:'Traffic and pedestrian routes separated, one-way system agreed where needed'},
+      {id:'b4',type:'check',text:'Welfare facilities available and ready for use before work starts',
+       guide:'Schedule 2 welfare must be in place from day one, not fitted later.'},
+      {id:'b5',type:'check',text:'Induction procedure in place and induction area identified'},
+    ]},
+    {title:'Emergency arrangements', items:[
+      {id:'c1',type:'check',text:'Emergency procedures written, displayed and covered at induction'},
+      {id:'c2',type:'check',text:'Fire points, extinguishers and assembly point in place and signed'},
+      {id:'c3',type:'check',text:'First aid provision adequate for the number of workers and risk level'},
+      {id:'c4',type:'text',text:'Name of appointed first aider / person'},
+      {id:'c5',type:'text',text:'Nearest A&E hospital'},
+      {id:'c6',type:'check',text:'Site address and what3words displayed for emergency services'},
+    ]},
+    {title:'Sign off', items:[
+      {id:'d1',type:'textarea',text:'Actions required before work may start'},
+      {id:'d2',type:'photo',text:'Site set-up photos'},
+    ]},
+  ]
+},
+{
+  id:'f02', code:'F02', cat:'checklist',
+  title:'Weekly Site Safety Inspection',
+  desc:'Routine walk-round of the live site',
+  sections:[
+    {title:'Access & housekeeping', items:[
+      {id:'a1',type:'check',text:'Access and egress routes clear, level and well lit'},
+      {id:'a2',type:'check',text:'Housekeeping to a good standard, waste cleared and segregated'},
+      {id:'a3',type:'check',text:'Materials stacked and stored safely'},
+      {id:'a4',type:'check',text:'Trailing leads and hoses managed, no trip hazards on walkways'},
+    ]},
+    {title:'Work at height', items:[
+      {id:'b1',type:'check',text:'Scaffold inspected within the last 7 days and scafftag current',
+       guide:'Also required after alteration or any event likely to have affected stability.'},
+      {id:'b2',type:'check',text:'Edge protection, guardrails and toe boards complete'},
+      {id:'b3',type:'check',text:'Ladders used only for short-duration low-risk work, secured and in good condition'},
+      {id:'b4',type:'check',text:'MEWPs in test, operators trained, harness and lanyard used in a boom lift'},
+      {id:'b5',type:'check',text:'Fragile surfaces and openings covered, fixed and marked'},
+    ]},
+    {title:'Excavations & structures', items:[
+      {id:'c1',type:'check',text:'Excavations supported or battered, inspected at the start of each shift'},
+      {id:'c2',type:'check',text:'Excavations barriered, with safe access and spoil kept back from the edge'},
+      {id:'c3',type:'check',text:'Buried and overhead services identified, marked and permits in force'},
+      {id:'c4',type:'check',text:'Temporary works in accordance with the design, sign-off held on site'},
+    ]},
+    {title:'Plant, equipment & substances', items:[
+      {id:'d1',type:'check',text:'Plant in test, daily pre-use checks recorded, operators hold valid tickets'},
+      {id:'d2',type:'check',text:'Lifting equipment has current thorough examination and lift plan'},
+      {id:'d3',type:'check',text:'110v tools used, PAT in date, no damaged leads'},
+      {id:'d4',type:'check',text:'COSHH substances stored correctly, assessments available and understood'},
+      {id:'d5',type:'check',text:'Dust, noise and vibration controls in use (on-tool extraction, water suppression)'},
+      {id:'d6',type:'check',text:'Gas bottles secured upright, stored apart, fire points nearby'},
+    ]},
+    {title:'People', items:[
+      {id:'e1',type:'check',text:'All operatives inducted and carrying valid cards'},
+      {id:'e2',type:'check',text:'PPE worn correctly — helmet, hi-vis, boots, plus task-specific'},
+      {id:'e3',type:'check',text:'RAMS briefed to the gang and signed, work matches the method'},
+      {id:'e4',type:'check',text:'Permits to work in force where required and being followed'},
+      {id:'e5',type:'number',text:'Number of operatives on site at time of inspection'},
+    ]},
+    {title:'Findings', items:[
+      {id:'f1',type:'select',text:'Overall site standard',options:['Good','Acceptable','Requires improvement','Unacceptable — stop work']},
+      {id:'f2',type:'textarea',text:'Observations and actions raised'},
+      {id:'f3',type:'text',text:'Actions to be closed out by (name)'},
+      {id:'f4',type:'date',text:'Close-out date'},
+      {id:'f5',type:'photo',text:'Evidence photos'},
+    ]},
+  ]
+},
+{
+  id:'f03', code:'F03', cat:'checklist',
+  title:'CDM 2015 Duty Holder Compliance Check',
+  desc:'Confirm the CDM appointments and duties are actually in place',
+  sections:[
+    {title:'Client duties', items:[
+      {id:'a1',type:'check',text:'Client has been made aware of their duties under CDM 2015'},
+      {id:'a2',type:'check',text:'Principal Designer appointed in writing (where more than one contractor)'},
+      {id:'a3',type:'check',text:'Principal Contractor appointed in writing (where more than one contractor)'},
+      {id:'a4',type:'check',text:'Adequate time and resource allowed in the programme for the work to be done safely'},
+      {id:'a5',type:'check',text:'Client has checked the arrangements are being maintained through the project'},
+      {id:'a6',type:'select',text:'Project type',options:['Commercial','Domestic client','Public sector','Other']},
+    ]},
+    {title:'Design & pre-construction', items:[
+      {id:'b1',type:'check',text:'Designers have eliminated, reduced or controlled foreseeable risks so far as reasonably practicable'},
+      {id:'b2',type:'check',text:'Residual design risks recorded and communicated to those who need them'},
+      {id:'b3',type:'check',text:'Pre-Construction Information issued to every designer and contractor'},
+      {id:'b4',type:'check',text:'Asbestos survey obtained for refurbishment or demolition works'},
+    ]},
+    {title:'Construction phase', items:[
+      {id:'c1',type:'check',text:'Construction Phase Plan prepared before the construction phase began'},
+      {id:'c2',type:'check',text:'Plan reviewed and updated as the work has changed'},
+      {id:'c3',type:'check',text:'Contractors given sufficient information, instruction, training and supervision'},
+      {id:'c4',type:'check',text:'Workers consulted and engaged on health and safety matters'},
+      {id:'c5',type:'check',text:'Health & Safety File being compiled and kept up to date'},
+    ]},
+    {title:'Notes', items:[
+      {id:'d1',type:'textarea',text:'Gaps identified and who is responsible for closing them'},
+    ]}
+  ]
+},
+{
+  id:'f04', code:'F04', cat:'checklist',
+  title:'Welfare Facilities Check',
+  desc:'CDM 2015 Schedule 2 requirements',
+  sections:[
+    {title:'Sanitary & washing', items:[
+      {id:'a1',type:'check',text:'Sufficient toilets, adequately ventilated and lit'},
+      {id:'a2',type:'check',text:'Separate facilities for men and women, or lockable individual rooms'},
+      {id:'a3',type:'check',text:'Wash basins with hot and cold (or warm) running water'},
+      {id:'a4',type:'check',text:'Soap and a means of drying provided'},
+      {id:'a5',type:'check',text:'Showers provided where the work is dirty or involves health risk'},
+      {id:'a6',type:'check',text:'Facilities kept clean and in good order, cleaning schedule being followed'},
+      {id:'a7',type:'number',text:'Number of toilets available'},
+    ]},
+    {title:'Rest, changing & drinking water', items:[
+      {id:'b1',type:'check',text:'Wholesome drinking water readily accessible and clearly marked'},
+      {id:'b2',type:'check',text:'Changing facilities with somewhere to dry and secure clothing'},
+      {id:'b3',type:'check',text:'Rest facilities with seating, a means of heating food and boiling water'},
+      {id:'b4',type:'check',text:'Rest area protects non-smokers from tobacco smoke'},
+      {id:'b5',type:'check',text:'Facilities adequate for the number of people on site'},
+      {id:'b6',type:'check',text:'Welfare accessible within a reasonable walking distance of the work face'},
+    ]},
+    {title:'Notes', items:[
+      {id:'c1',type:'textarea',text:'Defects and remedial action'},
+      {id:'c2',type:'photo',text:'Photos'},
+    ]}
+  ]
+},
+{
+  id:'f05', code:'F05', cat:'checklist',
+  title:'Contractor RAMS & Competence Review',
+  desc:'Before a contractor starts on site',
+  sections:[
+    {title:'Company', items:[
+      {id:'a1',type:'text',text:'Contractor / company name'},
+      {id:'a2',type:'text',text:'Package of work'},
+      {id:'a3',type:'text',text:'Site supervisor'},
+    ]},
+    {title:'Documents', items:[
+      {id:'b1',type:'check',text:'Risk assessment and method statement received and site-specific'},
+      {id:'b2',type:'check',text:'RAMS reviewed against the Construction Phase Plan, no conflicts'},
+      {id:'b3',type:'check',text:'COSHH assessments provided for substances being brought on site'},
+      {id:'b4',type:'check',text:'Public liability and employers liability insurance current'},
+      {id:'b5',type:'date',text:'Insurance expiry date'},
+      {id:'b6',type:'check',text:'Health & safety policy provided (5 or more employees)'},
+    ]},
+    {title:'Competence & resource', items:[
+      {id:'c1',type:'check',text:'Training records and cards verified for the operatives attending'},
+      {id:'c2',type:'check',text:'Plant tickets and thorough examination certificates provided'},
+      {id:'c3',type:'check',text:'Equipment inspection and calibration records current'},
+      {id:'c4',type:'check',text:'Supervision arrangements proportionate to the risk'},
+      {id:'c5',type:'check',text:'RAMS briefed to the whole gang and signature sheet returned'},
+    ]},
+    {title:'Decision', items:[
+      {id:'d1',type:'select',text:'Outcome',options:['Approved to start','Approved with conditions','Not approved — resubmit']},
+      {id:'d2',type:'textarea',text:'Conditions or reasons'},
+    ]}
+  ]
+},
+{
+  id:'f06', code:'F06', cat:'checklist',
+  title:'Site Induction Record',
+  desc:'One record per operative',
+  sections:[
+    {title:'Operative', items:[
+      {id:'a1',type:'text',text:'Full name'},
+      {id:'a2',type:'text',text:'Employer'},
+      {id:'a3',type:'text',text:'Trade / role'},
+      {id:'a4',type:'text',text:'Card number and expiry'},
+      {id:'a5',type:'tel',text:'Emergency contact number'},
+    ]},
+    {title:'Content covered', items:[
+      {id:'b1',type:'check',text:'Site rules, hours and PPE requirements'},
+      {id:'b2',type:'check',text:'Site layout, welfare, access routes and no-go areas'},
+      {id:'b3',type:'check',text:'Emergency procedures, alarm, assembly point and first aid'},
+      {id:'b4',type:'check',text:'Key site risks and control measures'},
+      {id:'b5',type:'check',text:'Accident, incident and near-miss reporting'},
+      {id:'b6',type:'check',text:'Permit systems and who to report to'},
+      {id:'b7',type:'check',text:'Occupational health — dust, noise, vibration, manual handling'},
+      {id:'b8',type:'check',text:'Right to stop work if it is not safe, and how to raise a concern'},
+    ]},
+    {title:'Declaration', items:[
+      {id:'c1',type:'check',text:'Operative confirms they understood the induction and any relevant medical conditions have been declared'},
+      {id:'c2',type:'textarea',text:'Notes'},
+    ]}
+  ]
+},
+{
+  id:'tb01', code:'TB', cat:'toolbox', titleFrom:'a1',
+  title:'Toolbox Talk Record',
+  desc:'Topic, who attended and what was raised',
+  sections:[
+    {title:'The talk', items:[
+      {id:'a1',type:'select',text:'Topic',
+       options:['Work at height','Manual handling','Slips, trips and falls','Dust and silica',
+                'Noise','Hand-arm vibration','COSHH and hazardous substances','Asbestos awareness',
+                'PPE','Housekeeping','Electrical safety and 110v','Excavations and buried services',
+                'Lifting operations','Plant and pedestrian segregation','Working in confined spaces',
+                'Fire prevention and hot works','Emergency procedures and first aid','Permits to work',
+                'Occupational health and health surveillance','Mental health and wellbeing',
+                'Heat and cold stress','Site security and public protection','Other — state below']},
+      {id:'a2',type:'text',text:'Specific subject, or topic if "Other"'},
+      {id:'a3',type:'text',text:'Delivered by'},
+      {id:'a4',type:'text',text:'Where it was held'},
+      {id:'a5',type:'number',text:'Duration (minutes)'},
+      {id:'a6',type:'file',text:'Attach your own version of the talk (optional)',
+       guide:'If you delivered your own document rather than the prepared talk above, attach it here and it stays with this record. PDF, Word or an image. 3MB maximum.'},
+      {id:'talk',type:'talk',text:'Talk notes'},
+    ]},
+    {title:'What was covered', items:[
+      {id:'b1',type:'textarea',text:'Key points covered',
+       guide:'What the risk is, who it affects, and what people must actually do differently.'},
+      {id:'b2',type:'check',text:'Relevant risk assessment and method statement referred to'},
+      {id:'b3',type:'check',text:'Site conditions on the day discussed, not just the generic topic'},
+      {id:'b4',type:'check',text:'Everyone given the chance to ask questions and raise concerns'},
+      {id:'b5',type:'check',text:'Right to stop unsafe work restated'},
+    ]},
+    {title:'Who attended', items:[
+      {id:'c1',type:'repeat',rowLabel:'Attendee',text:'Add everyone who attended',
+       columns:[
+         {id:'n',label:'Name',type:'text'},
+         {id:'e',label:'Employer',type:'text'},
+         {id:'t',label:'Trade',type:'text'},
+         {id:'s',label:'Signature',type:'sign'},
+       ]},
+      {id:'c2',type:'photo',text:'Photograph of the signed attendance sheet',
+       guide:'If you have taken signatures on paper, photograph it here and it will be attached to the PDF.'},
+    ]},
+    {title:'Raised and actions', items:[
+      {id:'d1',type:'textarea',text:'Questions, concerns or suggestions raised'},
+      {id:'d2',type:'textarea',text:'Actions arising'},
+      {id:'d3',type:'text',text:'Action owner'},
+      {id:'d4',type:'date',text:'Next talk due'},
+    ]},
+  ]
+},
+{
+  id:'ac01', code:'AC', cat:'incident', titleFrom:'b5',
+  title:'Accident / Incident Report',
+  desc:'Injuries, near misses and dangerous occurrences',
+  sections:[
+    {title:'The person involved', items:[
+      {id:'a1',type:'text',text:'Full name of injured or involved person'},
+      {id:'a2',type:'text',text:'Employer'},
+      {id:'a3',type:'text',text:'Trade / role'},
+      {id:'a4',type:'select',text:'Status',options:['Employee','Subcontractor','Agency worker','Visitor','Member of the public','Other']},
+      {id:'a5',type:'tel',text:'Contact number'},
+    ]},
+    {title:'What happened', items:[
+      {id:'b1',type:'date',text:'Date it happened'},
+      {id:'b2',type:'text',text:'Time it happened (24hr)'},
+      {id:'b3',type:'text',text:'Exact location on site'},
+      {id:'b4',type:'select',text:'Type',options:['Injury','Near miss','Dangerous occurrence','Damage only','Ill health']},
+      {id:'b5',type:'select',text:'What kind of event',
+       options:['Slip, trip or fall on the level','Fall from height','Struck by moving or falling object','Struck against something fixed','Manual handling','Contact with machinery','Electricity','Hazardous substance','Fire or explosion','Vehicle or plant','Other']},
+      {id:'b6',type:'textarea',text:'Describe what happened, in sequence',
+       guide:'Facts only. What the person was doing, what went wrong, what the outcome was. Avoid opinion or blame.'},
+      {id:'b7',type:'photo',text:'Photographs of the scene'},
+    ]},
+    {title:'Injury and treatment', items:[
+      {id:'c1',type:'text',text:'Part of body affected'},
+      {id:'c2',type:'textarea',text:'Nature of the injury'},
+      {id:'c3',type:'select',text:'Treatment given',
+       options:['None required','First aid on site','Sent to minor injuries / walk-in','Ambulance / A&E','Taken to hospital by others','Own doctor']},
+      {id:'c4',type:'text',text:'First aider who attended'},
+      {id:'c5',type:'select',text:'Did the person continue working?',options:['Yes, same duties','Yes, light duties','No, went home','No, taken to hospital']},
+      {id:'c6',type:'number',text:'Days unable to do normal work (if known)'},
+    ]},
+    {title:'RIDDOR', items:[
+      {id:'d1',type:'check',text:'Assessed against RIDDOR 2013 reporting requirements',
+       guide:'Reportable: death, specified injuries, over-7-day incapacitation, injury to a non-worker taken to hospital for treatment, occupational disease, dangerous occurrence.'},
+      {id:'d2',type:'select',text:'Is this reportable under RIDDOR?',options:['No','Yes — specified injury','Yes — over 7 day','Yes — non-worker to hospital','Yes — dangerous occurrence','Yes — occupational disease','To be confirmed']},
+      {id:'d3',type:'date',text:'Date reported to HSE (if applicable)'},
+      {id:'d4',type:'text',text:'HSE reference number'},
+      {id:'d5',type:'check',text:'Entered in the accident book (BI 510) where required'},
+      {id:'d6',type:'check',text:'Insurer notified where required'},
+    ]},
+    {title:'Cause and prevention', items:[
+      {id:'e1',type:'textarea',text:'Immediate cause'},
+      {id:'e2',type:'textarea',text:'Underlying or root cause',
+       guide:'Was the risk assessment adequate? Was the method followed? Was supervision, training or equipment a factor?'},
+      {id:'e3',type:'risk',text:'Potential severity had it been worse'},
+      {id:'e4',type:'textarea',text:'Action taken to prevent recurrence'},
+      {id:'e5',type:'text',text:'Action owner'},
+      {id:'e6',type:'date',text:'Action to be completed by'},
+      {id:'e7',type:'check',text:'Risk assessment and method statement reviewed as a result'},
+      {id:'e8',type:'check',text:'Findings shared with the workforce (toolbox talk or briefing)'},
+    ]},
+    {title:'Witnesses', items:[
+      {id:'f1',type:'repeat',rowLabel:'Witness',text:'Add each witness',
+       columns:[
+         {id:'n',label:'Name',type:'text'},
+         {id:'e',label:'Employer',type:'text'},
+         {id:'c',label:'Contact',type:'text'},
+         {id:'s',label:'What they saw',type:'textarea'},
+       ]},
+    ]},
+  ]
+},
+{
+  id:'ra01', code:'RA', cat:'ra', orient:'landscape', reviewLog:true,
+  signLabel:'Assessment provided by', titleFrom:'a1',
+  title:'Risk Assessment',
+  desc:'Activity based, with initial and residual scoring',
+  sections:[
+    {title:'Assessment', items:[
+      {id:'a1',type:'text',text:'Works or project this assessment covers'},
+      {id:'a2',type:'text',text:'Location'},
+      {id:'a8',type:'textarea',text:'Scope of the works being assessed'},
+    ]},
+    {title:'Hazards and controls', items:[
+      {id:'a9',type:'activity',text:'Load a standard activity'},
+      {id:'a4',type:'repeat',rowLabel:'Row',layout:'ra',text:'Assessment table',
+       columns:[
+         {id:'a',label:'Activity',type:'text'},
+         {id:'h',label:'Hazard',type:'text'},
+         {id:'e',label:'Effects of hazard',type:'text'},
+         {id:'p',label:'Persons affected',type:'text'},
+         {id:'ri',label:'Initial risk',type:'risk'},
+         {id:'c',label:'Control measures',type:'textarea'},
+         {id:'rr',label:'Residual risk',type:'risk'},
+         {id:'ac',label:'Action / comments',type:'textarea'},
+       ]},
+    ]},
+    {title:'Assessment details', items:[
+      {id:'a5',type:'check',text:'Assessment briefed to everyone carrying out the work'},
+      {id:'a3',type:'text',text:'Risk assessment provided by'},
+      {id:'a6',type:'date',text:'Review date'},
+      {id:'a10',type:'textarea',text:'Notes'},
+      {id:'a7',type:'photo',text:'Photographs'},
+    ]}
+  ]
+},
+{
+  id:'ms01', code:'MS', cat:'ra', orient:'portrait', titleFrom:'a1',
+  title:'Construction Method Statement',
+  desc:'Safe system of work for a specific task',
+  sections:[
+    {title:'The works', items:[
+      {id:'a1',type:'text',text:'Task or activity covered by this method statement'},
+      {id:'a2',type:'text',text:'Precise location on site'},
+      {id:'a3',type:'text',text:'Contractor carrying out the work'},
+      {id:'a4',type:'text',text:'Person in charge on site'},
+      {id:'a5',type:'tel',text:'Contact number for the person in charge'},
+      {id:'a6',type:'date',text:'Planned start date'},
+      {id:'a7',type:'text',text:'Expected duration'},
+      {id:'a8',type:'text',text:'Working hours and any out-of-hours agreement'},
+      {id:'a9',type:'text',text:'Revision number and date'},
+    ]},
+    {title:'Scope of works', items:[
+      {id:'b0',type:'method',text:'Load a standard method statement'},
+      {id:'b1',type:'textarea',text:'Describe the work in full',
+       guide:'What is being built, altered, installed or removed, and to what extent. Anyone reading this should be able to picture the job without seeing the drawings.'},
+      {id:'b2',type:'textarea',text:'What this method statement does NOT cover',
+       guide:'Be explicit about the boundaries. Adjacent packages, follow-on trades, anything needing a separate method statement.'},
+      {id:'b3',type:'text',text:'Drawings, specifications or designs referred to'},
+      {id:'b4',type:'check',text:'Associated risk assessment completed and attached'},
+      {id:'b5',type:'file',text:'Attach the risk assessment or supporting document (optional)'},
+    ]},
+    {title:'Sequence of operations', items:[
+      {id:'c1',type:'repeat',rowLabel:'Step',text:'Set out the job step by step, in the order it will be done',
+       columns:[
+         {id:'s',label:'Step',type:'text'},
+         {id:'d',label:'What happens, and how',type:'textarea'},
+         {id:'h',label:'Key hazards',type:'text'},
+         {id:'c',label:'Controls',type:'textarea'},
+         {id:'w',label:'Who',type:'text'},
+       ]},
+      {id:'c2',type:'check',text:'Sequence agreed with the principal contractor and fits the programme'},
+      {id:'c3',type:'textarea',text:'Hold points — work that must stop for inspection or sign-off before continuing'},
+    ]},
+    {title:'People and competence', items:[
+      {id:'d1',type:'number',text:'Number of operatives on this activity'},
+      {id:'d2',type:'textarea',text:'Trades, roles and who reports to whom'},
+      {id:'d3',type:'textarea',text:'Training, cards, tickets and certification required',
+       guide:'List what each role must hold — CSCS, CPCS, IPAF, PASMA, abrasive wheels, first aid, appointed person.'},
+      {id:'d4',type:'check',text:'Competence of every operative verified before starting'},
+      {id:'d5',type:'check',text:'Supervision arrangements proportionate to the risk and stated above'},
+      {id:'d6',type:'check',text:'All operatives will be briefed on this method statement and sign the briefing record'},
+    ]},
+    {title:'Plant, equipment and temporary works', items:[
+      {id:'e1',type:'repeat',rowLabel:'Item',text:'Plant and equipment to be used',
+       columns:[
+         {id:'p',label:'Plant or equipment',type:'text'},
+         {id:'r',label:'Certification / inspection required',type:'text'},
+         {id:'o',label:'Operator competence',type:'text'},
+       ]},
+      {id:'e2',type:'check',text:'All plant in current test, with certificates available on site'},
+      {id:'e3',type:'check',text:'Pre-use checks to be recorded daily'},
+      {id:'e4',type:'select',text:'Does the work involve temporary works?',
+       options:['No','Yes — design and sign-off in place','Yes — design still required']},
+      {id:'e5',type:'text',text:'Temporary works co-ordinator (if applicable)'},
+      {id:'e6',type:'check',text:'Lifting operations planned, with a lift plan where required'},
+    ]},
+    {title:'Materials and substances', items:[
+      {id:'f1',type:'textarea',text:'Materials being used, and how they will be delivered, stored and moved'},
+      {id:'f2',type:'textarea',text:'Hazardous substances and their controls',
+       guide:'Anything requiring a COSHH assessment: cement, resins, solvents, adhesives, fuels, silica-producing work.'},
+      {id:'f3',type:'check',text:'COSHH assessments completed and available on site'},
+      {id:'f4',type:'check',text:'Manual handling assessed, mechanical aids provided where needed'},
+    ]},
+    {title:'Access, protection and site controls', items:[
+      {id:'g1',type:'textarea',text:'How people and materials will get to and from the work area'},
+      {id:'g2',type:'textarea',text:'Protection of others — site workers, other trades, the public and occupied areas'},
+      {id:'g3',type:'check',text:'Exclusion zones, barriers and signage arranged'},
+      {id:'g4',type:'check',text:'Work at height controls in place, or not applicable'},
+      {id:'g5',type:'check',text:'Services identified, isolated or protected before work starts'},
+      {id:'g6',type:'select',text:'Permits required',
+       options:['None','Hot works','Confined space','Excavation / services','Roof work','Live electrical','More than one — list below']},
+      {id:'g7',type:'text',text:'Permit detail, if any'},
+      {id:'g8',type:'textarea',text:'PPE required for this task, beyond site minimum'},
+    ]},
+    {title:'Environment and waste', items:[
+      {id:'h1',type:'textarea',text:'Environmental controls — dust, noise, vibration, spills, watercourses, wildlife'},
+      {id:'h2',type:'text',text:'How waste from this activity will be segregated and removed'},
+      {id:'h3',type:'check',text:'Neighbours or occupiers notified where the work will affect them'},
+    ]},
+    {title:'Emergency arrangements', items:[
+      {id:'i1',type:'textarea',text:'What to do if something goes wrong during this task',
+       guide:'Task-specific, not the generic site plan. Rescue from height, spill response, breaking into a service, sudden collapse.'},
+      {id:'i2',type:'check',text:'Rescue plan in place where work at height or confined space is involved'},
+      {id:'i3',type:'text',text:'First aider covering this activity'},
+      {id:'i4',type:'text',text:'Nearest A&E hospital'},
+      {id:'i5',type:'check',text:'Everyone briefed on the alarm, escape route and assembly point'},
+    ]},
+    {title:'Review and approval', items:[
+      {id:'j1',type:'textarea',text:'Anything that would require this method statement to be stopped and revised',
+       guide:'Change in ground conditions, weather, design change, unexpected services or asbestos, different plant.'},
+      {id:'j2',type:'check',text:'Method statement reviewed against the construction phase plan'},
+      {id:'j3',type:'text',text:'Prepared by'},
+      {id:'j4',type:'text',text:'Reviewed and approved by'},
+      {id:'j5',type:'date',text:'Review date'},
+      {id:'j6',type:'photo',text:'Supporting photographs or sketches'},
+    ]},
+    {title:'Briefing record', items:[
+      {id:'k1',type:'repeat',rowLabel:'Operative',text:'Everyone briefed on this method statement',
+       columns:[
+         {id:'n',label:'Name',type:'text'},
+         {id:'e',label:'Employer',type:'text'},
+         {id:'t',label:'Trade',type:'text'},
+         {id:'s',label:'Signature',type:'sign'},
+       ]},
+      {id:'k2',type:'check',text:'Everyone above confirmed they understood the method and can raise concerns'},
+    ]},
+  ]
+},
+{
+  id:'hz01', code:'HZ', cat:'hazard', titleFrom:'a1',
+  title:'Report a Hazard',
+  desc:'Quick capture — takes about a minute',
+  sections:[
+    {title:'What and where', items:[
+      {id:'a1',type:'text',text:'Exact location'},
+      {id:'a2',type:'textarea',text:'What is the hazard?'},
+      {id:'a3',type:'photo',text:'Photo of the hazard'},
+      {id:'a4',type:'risk',text:'Rate the risk'},
+    ]},
+    {title:'Response', items:[
+      {id:'b1',type:'select',text:'Immediate action taken',
+       options:['Made safe on the spot','Area barriered off','Work stopped','Reported only — no action possible']},
+      {id:'b2',type:'textarea',text:'Describe the action taken'},
+      {id:'b3',type:'select',text:'Urgency',options:['Attend now','Within 24 hours','This week','Monitor']},
+      {id:'b4',type:'text',text:'Passed to (name)'},
+      {id:'b5',type:'check',text:'Site supervisor informed'},
+    ]}
+  ]
+}
+];
+
+/* =====================================================================
+   3. THE MARK
+      SC monogram. Two arcs of equal stroke weight; the C stays open and
+      its tail rises into a check. Stroke thickens at small sizes so the
+      counters don't fill in.
+   ===================================================================== */
+/* Shown under the app name on the lock screen. Change the wording here. */
+const STRAPLINE = 'Everything a contractor needs, in one place';   // lock screen
+const STRAPLINE_HOME = 'The whole site, in your pocket';            // foot of the home screen
+
+const PATH_S = 'M 89.6 82.7 A 22 16 0 1 0 74 110 A 22 16 0 1 1 58.4 137.3';
+const PATH_C = 'M 164.1 87.4 A 27 32 0 1 0 145 142 L 175 108';
+function logo(plate = '#FFD400', ink = '#14171A', w = 16, r = 46){
+  return `<svg viewBox="0 0 220 220" role="img" aria-label="SiteCheck">
+    ${plate ? `<rect width="220" height="220" rx="${r}" fill="${plate}"/>` : ''}
+    <path d="${PATH_S}" fill="none" stroke="${ink}" stroke-width="${w}" stroke-linecap="round"/>
+    <path d="${PATH_C}" fill="none" stroke="${ink}" stroke-width="${w}" stroke-linecap="round"/>
+  </svg>`;
+}
+
+/* =====================================================================
+   4. HELPERS
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uk = d => new Date(d).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+const ukd = d => new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
+/* Likelihood x Severity = Risk.  High 11-25, Medium 6-10, Low 1-5. */
+const riskBand = n => n>=11 ? {l:'HIGH',c:'var(--stop)'}
+                    : n>=6  ? {l:'MEDIUM',c:'var(--warn)'}
+                            : {l:'LOW',c:'var(--go)'};
+
+function toast(msg){
+  const t = document.createElement('div');
+  t.className='toast'; t.textContent=msg; document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2600);
+}
+
+/* --- project references --------------------------------------------------
+   Format: WRM-SC-001-2026. The number is the next one never yet issued, and
+   the year is the current one, so a new year starts WRM-SC-014-2027 rather
+   than going back to 001. Numbers are never reused, even if a project is
+   deleted. Change REF_PREFIX below if the WRM-SC part ever changes.       */
+const REF_PREFIX = 'WRM-SC';
+
+function nextProjectRef(){
+  const year = new Date().getFullYear();
+  const re = new RegExp('^' + REF_PREFIX + '-(\\d+)-(\\d{4})$', 'i');
+  let max = state.refseq || 0;
+  state.projects.forEach(p => {
+    const m = String(p.ref || '').match(re);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  });
+  return `${REF_PREFIX}-${String(max + 1).padStart(3, '0')}-${year}`;
+}
+function refInUse(ref, exceptId){
+  const r = String(ref || '').trim().toLowerCase();
+  return state.projects.some(p => p.id !== exceptId && String(p.ref || '').trim().toLowerCase() === r);
+}
+
+/* --- installed-app plumbing --------------------------------------- */
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+               (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const STANDALONE = window.navigator.standalone === true ||
+                   matchMedia('(display-mode: standalone)').matches;
+if (STANDALONE) document.documentElement.classList.add('standalone');
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+}
+// ask the browser not to evict our records if storage runs short
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+
+var hintDismissed = false;
+function dismissHint(){ hintDismissed = true; render(); }
+function installHint(){
+  if (STANDALONE || hintDismissed || !IS_IOS) return '';
+  return `<div class="banner hint">
+    <b>Put SiteCheck on your home screen</b>
+    Tap Share, then <b>Add to Home Screen</b>. It opens without the browser bars and keeps working with no signal.
+    <button onclick="dismissHint()">Not now</button>
+  </div>`;
+}
+
+const state = { view:'login', pin:'', uid:'', loginMsg:'', fails:0, lockUntil:0,
+                profile:null, form:null, answers:{}, record:null, sig:'',
+                site:null, projects:[], records:[], filter:null, q:'', editing:null,
+                syncing:false, pendingCount:0, users:[], shares:[], docs:[], audit:[] };
+
+/* =====================================================================
+   4. APP
+   ===================================================================== */
+async function boot(){
+  await initStore();
+
+  state.records  = await DB.allRecords();
+  state.projects = await get('projects') || [];
+  state.refseq   = await get('refseq')   || 0;
+  state.uid      = await get('lastUid')  || '';
+
+  const cur = await get('current');
+  state.site = state.projects.find(p => p.id === cur) || null;
+
+  try {
+    const res  = await fetch('./icons/icon-180.png');
+    const blob = await res.blob();
+    PDF.init(await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); }));
+  } catch(e){ PDF.init(null); }
+
+  const missing = [
+    !window.PDF || typeof PDF.downloadCombined !== 'function' ? 'pdf.js' : null,
+    !window.XLS ? 'xlsx.js' : null,
+    !window.TALKS ? 'talks.js' : null,
+    typeof ACTIVITIES === 'undefined' ? 'activities.js' : null,
+    typeof METHODS === 'undefined' ? 'methods.js' : null,
+    !window.CLOUD ? 'cloud.js' : null,
+  ].filter(Boolean);
+  if (missing.length){
+    setTimeout(() => toast('Update not finished — close the app fully and reopen'), 800);
+    console.warn('Stale or missing scripts:', missing.join(', '));
+  }
+
+  const prof = await CLOUD.restore();
+  if (prof){
+    state.profile = prof;
+    state.view = state.site ? 'home' : 'projects';
+    render();
+    syncNow(true);
+    CLOUD.startLive(onLiveChange);
+  } else {
+    state.view = 'login';
+    render();
+  }
+
+  window.addEventListener('online', () => { paintNet(); syncNow(); });
+  window.addEventListener('offline', paintNet);
+  setInterval(() => { if (navigator.onLine && state.profile) syncNow(); }, 60000);
+}
+
+/* --- syncing -------------------------------------------------------------
+   Push whatever is waiting, then pull everything back down. Signed records
+   never change, so pulling can never overwrite good local work.         */
+async function syncNow(quiet){
+  if (state.syncing || !state.profile) return;
+  if (!navigator.onLine){ state.pendingCount = (await DB.pending()).length; paintSync(); return; }
+  state.syncing = true; paintSync();
+  try {
+    // anything completed on this device that has not gone up yet
+    const local = (await DB.allRecords()).filter(r => !r.synced);
+    for (const r of local){
+      const res = await CLOUD.pushRecord(r);
+      if (!res.queued){ r.synced = 1; await DB.putRecord(r); }
+    }
+    await CLOUD.flush();
+
+    const projects = await CLOUD.pullProjects();
+    if (projects){
+      state.projects = projects;
+      const cur = await get('current');
+      state.site = projects.find(p => p.id === cur) || state.site;
+      if (state.site && !projects.find(p => p.id === state.site.id)) state.site = null;
+    }
+    const records = await CLOUD.pullRecords();
+    if (records) state.records = await DB.allRecords();
+
+    state.lastSync = Date.now();
+    await set('lastSync', state.lastSync);
+  } catch(e){
+    console.warn('sync failed:', e.message || e);
+    if (!quiet) toast('Could not sync — will try again');
+  }
+  state.pendingCount = (await DB.pending()).length;
+  state.syncing = false;
+  paintSync();
+  if (['home','records','projects'].includes(state.view)) render();
+}
+
+/* Something changed on the server — pull it in and repaint. This is what
+   makes a record appear on someone else's screen as it is signed.      */
+let liveTimer = null;
+function onLiveChange(){
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(async () => {
+    const before = state.records.length;
+    await syncNow(true);
+    const added = state.records.length - before;
+    if (added > 0) toast(added === 1 ? 'New record received' : `${added} new records received`);
+  }, 600);
+}
+
+function render(){
+  const v = state.view;
+  if (v==='login') return $('#app').innerHTML = viewLogin();
+  let body;
+  if (v==='home')     body = viewHome();
+  if (v==='list')     body = viewList();
+  if (v==='fill')     body = viewFill();
+  if (v==='records')  body = viewRecords();
+  if (v==='record')   body = viewRecord();
+  if (v==='site')     body = viewSite();
+  if (v==='projects') body = viewProjects();
+  if (v==='reports')  body = viewReports();
+  if (v==='users')    body = viewUsers();
+  if (v==='docs')     body = viewDocs();
+  if (v==='audit')    body = viewAudit();
+  $('#app').innerHTML = shell(body);
+  const m = $('main');
+  if (m && ['fill','record','records','list','site'].includes(v)) m.classList.add('two');
+  if (v==='fill') mountFill();
+  window.scrollTo(0,0);
+}
+
+function shell(inner){
+  const on = navigator.onLine;
+  return `
+  <header class="app">
+    <div class="hd">
+      <button class="brand" onclick="go('projects')" aria-label="Projects">
+        <span class="mark">${logo("#FFD400","#14171A",17,34)}</span>
+        <h1>SiteCheck<small>CDM 2015 · WRM</small></h1>
+      </button>
+      <span class="tagline"><i></i>${STRAPLINE_HOME}</span>
+      <div class="right" style="flex:0 0 auto">
+        <button class="syncbtn" id="syncbtn" onclick="syncNow()" title="Sync now">
+          <span class="dot" id="netdot"></span>
+          <span class="netlabel" id="netlabel">Synced</span>
+        </button>
+        ${state.profile ? `<span class="who" title="${esc(state.profile.full_name||'')}">${esc(state.profile.user_id)}</span>` : ''}
+        <button class="lockbtn" onclick="lock()" aria-label="Lock and sign out">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          <span>Lock</span>
+        </button>
+      </div>
+    </div>
+    <div class="tape"></div>
+  </header>${inner}`;
+}
+function crumb(label, back, right){
+  return `<div class="crumb">
+    <button onclick="${back}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M15 18l-6-6 6-6"/></svg>
+      ${esc(label)}
+    </button>${right?`<span>${esc(right)}</span>`:''}
+  </div>`;
+}
+function paintNet(){ paintSync(); }
+
+/* One indicator doing the work of three: are we online, is anything waiting
+   to go up, and is it going up right now. */
+function paintSync(){
+  const l = $('#netlabel'), d = $('#netdot'), b = $('#syncbtn');
+  if(!l || !d) return;
+  const on = navigator.onLine;
+  let label, cls;
+  if (state.syncing){ label = 'Syncing…'; cls = 'dot sync'; }
+  else if (!on){ label = state.pendingCount ? `Offline · ${state.pendingCount} waiting` : 'Offline'; cls = 'dot off'; }
+  else if (state.pendingCount){ label = `${state.pendingCount} waiting`; cls = 'dot warn'; }
+  else { label = 'Synced'; cls = 'dot'; }
+  l.textContent = label;
+  d.className = cls;
+  if (b) b.disabled = state.syncing;
+}
+
+/* ---- login ------------------------------------------------------------
+   User ID above, keypad below. Five digits, then it signs in. Wrong PIN
+   five times and it locks for a few minutes — a keypad is easy to guess
+   at otherwise.                                                        */
+function viewLogin(){
+  const locked = state.lockUntil && state.lockUntil > Date.now();
+  const wait = locked ? Math.ceil((state.lockUntil - Date.now()) / 1000) : 0;
+  return `<div class="tape"></div><div class="lockwrap"><div class="login">
+    <div class="mark">${logo("#FFD400","#14171A",16,30)}</div>
+    <h2>SiteCheck</h2>
+    <p class="by">by <b>WRM</b></p>
+    <p class="strap">${STRAPLINE}</p>
+
+    <label class="uid">User ID</label>
+    <input type="text" id="uid" class="uidbox" autocomplete="username"
+           autocapitalize="none" autocorrect="off" spellcheck="false"
+           placeholder="e.g. PougherG" value="${esc(state.uid||'')}"
+           oninput="state.uid=this.value" ${locked?'disabled':''}>
+
+    <div class="pins">${[0,1,2,3,4].map(i=>`<i class="${state.pin.length>i?'on':''}"></i>`).join('')}</div>
+    ${locked ? `<p class="lockmsg">Too many attempts. Try again in ${wait}s.</p>` : ''}
+    <div class="pad">
+      ${[1,2,3,4,5,6,7,8,9].map(n=>`<button ${locked?'disabled':''} onclick="pin('${n}')">${n}</button>`).join('')}
+      <button ${locked?'disabled':''} onclick="pin('clear')" style="font-size:12px;letter-spacing:.1em">CLEAR</button>
+      <button ${locked?'disabled':''} onclick="pin('0')">0</button>
+      <button ${locked?'disabled':''} onclick="pin('del')" style="font-size:18px">&#9003;</button>
+    </div>
+    <p class="sub" id="loginmsg" style="margin-top:24px;margin-bottom:0">
+      ${state.loginMsg ? esc(state.loginMsg) : 'Works with no signal once you have signed in.'}</p>
+  </div></div>`;
+}
+
+async function pin(k){
+  if (state.lockUntil && state.lockUntil > Date.now()) return;
+  if(k==='clear') state.pin='';
+  else if(k==='del') state.pin = state.pin.slice(0,-1);
+  else if(state.pin.length<5) state.pin += k;
+  render();
+  const box = document.getElementById('uid');
+  if (box && document.activeElement !== box && state.uid) box.value = state.uid;
+  if(state.pin.length===5) await tryLogin();
+}
+
+async function tryLogin(){
+  const id = (state.uid||'').trim();
+  const p  = state.pin;
+  state.pin = '';
+
+  if (!id){ state.loginMsg = 'Enter your User ID first'; render(); return; }
+  if (!CLOUD.validId(id)){
+    state.loginMsg = 'User IDs use letters, numbers, dots, hyphens or underscores';
+    render(); return;
+  }
+
+  state.loginMsg = 'Checking…'; render();
+  try {
+    const prof = await CLOUD.signIn(id, p);
+    state.fails = 0;
+    state.loginMsg = '';
+    await set('lastUid', id);
+    await afterLogin(prof);
+  } catch(e){
+    state.fails = (state.fails||0) + 1;
+    if (state.fails >= 5){
+      state.lockUntil = Date.now() + 3*60*1000;
+      state.loginMsg = 'Locked for 3 minutes';
+      setTimeout(()=>{ state.lockUntil = 0; state.fails = 0; render(); }, 3*60*1000);
+    } else {
+      state.loginMsg = navigator.onLine
+        ? `Wrong User ID or PIN (${5-state.fails} left)`
+        : 'No connection — first sign-in needs signal';
+    }
+    render();
+  }
+}
+
+async function afterLogin(prof){
+  state.profile = prof;
+  state.view = 'projects';
+  render();
+  await syncNow(true);
+  CLOUD.startLive(onLiveChange);
+}
+
+async function lock(){
+  await CLOUD.signOut();
+  state.profile = null; state.pin=''; state.view='login';
+  state.uid = await get('lastUid') || '';
+  render();
+}
+
+/* ---- home ---- *//* ---- home ---- */
+const ICONS = {
+  forms:'<path d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+  ra:'<path d="M12 3l9 16H3z"/><path d="M12 9v5M12 17h.01"/>',
+  hazard:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16h.01"/>',
+  records:'<path d="M4 5h16v14H4z"/><path d="M4 9h16M9 9v10"/>',
+  site:'<path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/>',
+  incident:'<path d="M4.5 19h15a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0L2.8 16a2 2 0 0 0 1.7 3z"/><path d="M12 9v4M12 16h.01"/>',
+  reports:'<path d="M4 4h16v16H4z"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
+  toolbox:'<path d="M3 9h18v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M8 9V6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v3"/><path d="M3 13h18"/>',
+  docs:'<path d="M4 4h9l3 3h4v13H4z"/><path d="M8 13h8M8 17h5"/>',
+  history:'<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v5l3 2"/>',
+  people:'<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6M18 20a6 6 0 0 0-3-5.2"/>',
+};
+function viewHome(){
+  const today = state.records.filter(r=> new Date(r.at).toDateString()===new Date().toDateString()).length;
+  const opens = state.records.filter(r=> r.fails>0).length;
+  const s = state.site || {};
+  return `
+  <main>
+    ${installHint()}
+    <div class="projbar">
+      <div class="txt"><b>${esc(s.name||'No project selected')}</b>
+        <small>${esc([s.ref,s.address].filter(Boolean).join(' · ')||'Tap change to pick a project')}</small></div>
+      <button onclick="go('projects')">Change</button>
+      ${state.site && CLOUD.canMakeProjects() ? `<button onclick="openShare()">Share</button>` : ''}
+    </div>
+    <div class="searchbar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input type="text" id="q" value="${esc(state.q)}" placeholder="Search forms, questions and records"
+             autocomplete="off" oninput="onSearch(this.value)">
+      <button class="clr" id="qclr" onclick="clearSearch()" aria-label="Clear search"
+              style="display:${state.q?'block':'none'}">&times;</button>
+    </div>
+    <div id="results">${results()}</div>
+    <div class="signoff">
+      <p class="tag">${STRAPLINE_HOME}</p>
+      <div class="mk">
+        <span class="m">${logo(null,'#14171A',17,0)}</span>
+        <span>SiteCheck &middot; WRM</span>
+      </div>
+    </div>
+  </main>`;
+}
+
+/* --- search ---------------------------------------------------------------
+   Searches form titles, every question inside them, and everything already
+   recorded — then tells you which tile the result lives under.            */
+function onSearch(v){
+  state.q = v;
+  const box = document.getElementById('results');
+  if (box) box.innerHTML = results();          // swap results only, so the keyboard stays up
+  const clr = document.getElementById('qclr');
+  if (clr) clr.style.display = v ? 'block' : 'none';
+}
+function clearSearch(){
+  state.q = '';
+  const i = document.getElementById('q');
+  if (i){ i.value = ''; i.focus(); }
+  onSearch('');
+}
+const WHERE = { checklist:'Forms', ra:'RAMS', hazard:'Report a hazard', incident:'Accident / incident', toolbox:'Toolbox talks' };
+
+function results(){
+  const q = (state.q||'').trim().toLowerCase();
+  if (!q) return tiles();
+
+  const forms = [];
+  FORMS.forEach(f => {
+    const head = (f.title+' '+f.desc).toLowerCase().includes(q);
+    const qs = [];
+    f.sections.forEach(sec => sec.items.forEach(i => {
+      if (i.text.toLowerCase().includes(q)) qs.push(i.text);
+    }));
+    if (head || qs.length) forms.push({f, qs});
+  });
+
+  const recs = state.records.filter(r => {
+    const hay = (r.title+' '+r.ref+' '+r.by+' '+(r.site&&r.site.name||'')+' '+JSON.stringify(r.answers||{})).toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (!forms.length && !recs.length) return `<div class="empty">
+    <b>Nothing found for &ldquo;${esc(state.q)}&rdquo;</b>
+    Try a single word — &ldquo;scaffold&rdquo;, &ldquo;welfare&rdquo;, &ldquo;asbestos&rdquo;.</div>`;
+
+  let out = '';
+  if (forms.length){
+    out += `<div class="eyebrow">Forms &amp; templates &middot; ${forms.length}</div>`;
+    out += forms.map(({f,qs}) => `
+      <button class="row hit" onclick="startForm('${f.id}')">
+        <span class="code">${f.code}</span>
+        <span class="txt"><b>${esc(f.title)}</b>
+          <small>${qs.length ? mark(qs[0], q) + (qs.length>1?` &middot; +${qs.length-1} more`:'') : esc(f.desc)}</small></span>
+        <span class="where">${WHERE[f.cat]}</span>
+      </button>`).join('');
+  }
+  if (recs.length){
+    out += `<div class="eyebrow">Completed records &middot; ${recs.length}</div>`;
+    out += recs.slice(0,25).map(r => `
+      <button class="row hit" onclick="openRecord('${r.id}')">
+        <span class="code">${r.code}</span>
+        <span class="txt"><b>${esc(r.title)}</b>
+          <small>${esc(r.site&&r.site.name||'')} &middot; ${uk(r.at)}</small></span>
+        <span class="where">Records</span>
+      </button>`).join('');
+  }
+  return out;
+}
+function mark(text, q){
+  const i = text.toLowerCase().indexOf(q);
+  if (i < 0) return esc(text);
+  return esc(text.slice(0,i)) + '<em>' + esc(text.slice(i,i+q.length)) + '</em>' + esc(text.slice(i+q.length));
+}
+
+function tiles(){
+  const today = state.records.filter(r=> new Date(r.at).toDateString()===new Date().toDateString()).length;
+  const opens = state.records.filter(r=> r.fails>0).length;
+  const tile = (t,d,icon,bar,click,count) => `
+    <button class="tile" onclick="${click}">
+      <div class="bar" style="background:${bar}"></div>
+      <div class="body">
+        <svg viewBox="0 0 24 24" fill="none" stroke="${bar}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${icon}</svg>
+        <div><b>${t}</b><p>${d}</p></div>
+        ${count?`<span class="count">${count}</span>`:''}
+      </div></button>`;
+  return `
+    <div class="eyebrow">Record something</div>
+    <div class="tiles">
+      ${tile('Forms','Checklists and inspections',ICONS.forms,'var(--duty)',"openList('checklist')", FORMS.filter(f=>f.cat==='checklist').length+' forms')}
+      ${tile('RAMS','Risk assessments &amp; method statements',ICONS.ra,'var(--warn)',"openList('ra')", FORMS.filter(f=>f.cat==='ra').length+' templates')}
+      ${tile('Report a hazard','Fast capture with a photo',ICONS.hazard,'var(--stop)',"startForm('hz01')",'~1 min')}
+      ${tile('Accident / incident',"Injuries, near misses, RIDDOR",ICONS.incident,'#8A0F22',"startForm('ac01')",'')}
+      ${tile('Toolbox talks','Topic, attendance and actions',ICONS.toolbox,'#0B7285',"startForm('tb01')",'')}
+      ${tile('Records','Completed and signed',ICONS.records,'var(--go)',"go('records')", state.records.length+' saved')}
+      ${tile('Reports','Download to a spreadsheet',ICONS.reports,'var(--duty)',"go('reports')", '')}
+      ${tile('Documents','PDFs, plans and registers',ICONS.docs,'#0B7285',"openDocs()", '')}
+      ${tile('History','Every change, who and when',ICONS.history,'var(--ink-soft)',"openAudit()", '')}
+      ${CLOUD.isSuper() ? tile('People','Accounts and roles',ICONS.people,'#6B21A8',"openUsers()", '') : ''}
+      <button class="tile wide" onclick="go('site')">
+        <div class="bar" style="background:var(--ink)"></div>
+        <div class="body">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS.site}</svg>
+          <div class="txt"><b>Site details</b><p>Project, client and your name &mdash; carried onto every form</p></div>
+        </div></button>
+    </div>
+    <div class="eyebrow">Today</div>
+    <div class="row" style="pointer-events:none">
+      <div class="txt"><b>${today} completed today</b>
+      <small>${opens>0? opens+' record'+(opens===1?'':'s')+' with items marked fail' : 'No failed items outstanding'}</small></div>
+      <span class="pill ${opens>0?'stop':'go'}">${opens>0?'ACTION':'CLEAR'}</span>
+    </div>`;
+}
+
+function go(v){ state.view=v; render(); }
+function openList(cat){ state.filter=cat; state.view='list'; render(); }
+
+/* ---- form list ---- */
+function viewList(){
+  const list = FORMS.filter(f=>f.cat===state.filter);
+  const label = state.filter==='ra'?'RAMS':'Forms';
+  return crumb('Home',"go('home')",label) + `<main>
+    <div class="eyebrow">Choose a ${state.filter==='ra'?'template':'form'}</div>
+    ${list.map(f=>`
+      <button class="row" onclick="startForm('${f.id}')">
+        <span class="code">${f.code}</span>
+        <span class="txt"><b>${esc(f.title)}</b><small>${esc(f.desc)} · ${countItems(f)} questions</small></span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg>
+      </button>`).join('')}
+  </main>`;
+}
+const countItems = f => f.sections.reduce((n,s)=>n+s.items.length,0);
+
+/* ---- fill a form ---- */
+async function startForm(id){
+  if (!state.site){ toast('Pick a project first'); go('projects'); return; }
+  state.form = FORMS.find(f=>f.id===id);
+  state.answers = {};
+  state.sig = '';
+
+  // pick up where they left off, if this form was interrupted
+  const draft = await DB.get('draft:' + id);
+  if (draft && draft.projectId === state.site.id && Object.keys(draft.answers||{}).length){
+    if (confirm('You have an unfinished ' + state.form.title + ' on this project. Carry on with it?')){
+      state.answers = draft.answers || {};
+      state.sig = draft.sig || '';
+    } else {
+      await DB.del('draft:' + id);
+    }
+  }
+  state.view = 'fill';
+  render();
+}
+function viewFill(){
+  const f = state.form;
+  let n = 0;
+  const body = f.sections.map(sec => `
+    <div class="eyebrow">${esc(sec.title)}</div>
+    ${sec.items.map(it => { n++; return question(it, n); }).join('')}
+  `).join('');
+  return crumb('Cancel',"confirmExit()", f.code) + `<main>
+    <div class="banner"><b>${esc(f.title)}</b>${esc(state.site.name||'No site set')} · ${ukd(Date.now())}</div>
+    ${body}
+    <div class="eyebrow">Signature</div>
+    <div class="q">
+      <label class="qt">Signed by <span class="req">*</span></label>
+      <input type="text" id="signedBy" placeholder="Your full name" value="${esc((state.profile||{}).full_name||'')}">
+      ${signBox('main')}
+    </div>
+  </main>
+  <div class="actionbar"><div class="inner">
+    <div class="progress"><span id="prog">0 of ${n} answered</span>
+      <span id="draftnote" class="draftnote"></span></div>
+    <button class="btn go" onclick="submitForm()">Complete &amp; time stamp</button>
+  </div></div>`;
+}
+
+function question(it, n){
+  const id = it.id;
+  const head = `<span class="num">Q${String(n).padStart(2,'0')}</span>
+    <label class="qt" for="i_${id}">${esc(it.text)}</label>
+    ${it.guide?`<p class="guide">${esc(it.guide)}</p>`:''}`;
+  let ctrl = '';
+  switch(it.type){
+    case 'check':
+      ctrl = `<div class="seg" role="group">
+        ${[['pass','Pass'],['fail','Fail'],['na','N/A']].map(([v,l])=>
+          `<button type="button" data-v="${v}" aria-pressed="false" onclick="pick('${id}','${v}',this)">${l}</button>`).join('')}
+      </div>
+      <div class="note"><input type="text" placeholder="Note (optional)" oninput="note('${id}',this.value)"></div>`;
+      break;
+    case 'textarea':
+      ctrl = `<textarea id="i_${id}" oninput="val('${id}',this.value)" placeholder="Type here"></textarea>`; break;
+    case 'select':
+      ctrl = `<select id="i_${id}" onchange="val('${id}',this.value)"><option value="">Select…</option>
+        ${it.options.map(o=>`<option>${esc(o)}</option>`).join('')}</select>`; break;
+    case 'photo':
+      ctrl = `<input type="file" accept="image/*" capture="environment" style="margin-top:10px" onchange="addPhoto('${id}',this)">
+        <div class="thumbs" id="th_${id}"></div>`; break;
+    case 'file':
+      ctrl = `<input type="file" id="f_${id}" style="margin-top:10px" onchange="addFile('${id}',this)">
+        <div id="fl_${id}"></div>`; break;
+    case 'talk':
+      return `<div id="talkbox" class="wide">${talkPanel(state.answers.a1 && state.answers.a1.v)}</div>`;
+    case 'risk':
+      ctrl = riskCtrl(id); break;
+    case 'repeat':
+      ctrl = `<div id="rp_${id}"></div>
+        <button class="btn ghost" style="margin-top:12px;padding:12px" onclick="addRow('${id}')">+ Add ${(it.rowLabel||'item').toLowerCase()}</button>`; break;
+    case 'activity':
+      return `<div class="q talkq" id="actbox">${activityPanel()}</div>`;
+    case 'method':
+      return `<div class="q talkq" id="methbox">${methodPanel()}</div>`;
+    default:
+      ctrl = `<input type="${it.type==='tel'?'tel':it.type}" id="i_${id}" oninput="val('${id}',this.value)">`;
+  }
+  const wide = ['repeat','talk'].includes(it.type) ? ' wide' : '';
+  return `<div class="q${wide}" data-q="${id}">${head}${ctrl}</div>`;
+}
+function riskCtrl(id, path, val){
+  const p = path||id;
+  const v = val || {l:1,s:1,score:1};
+  const b = riskBand(v.score||1);
+  const o = sel => Array.from({length:5},(_,i)=>
+    `<option value="${i+1}"${(+sel===i+1)?' selected':''}>${i+1}</option>`).join('');
+  return `<div class="risk">
+    <div><label>Likelihood</label><select onchange="rate('${p}','l',this.value)">${o(v.l)}</select></div>
+    <div><label>Severity</label><select onchange="rate('${p}','s',this.value)">${o(v.s)}</select></div>
+    <div class="score ${b.l==='MEDIUM'?'med':''}" id="sc_${p.replace(/\./g,'_')}" style="background:${b.c}">${v.score||1}<small>${b.l}</small></div>
+  </div>`;
+}
+
+/* answer handlers */
+function pick(id,v,btn){
+  state.answers[id] = Object.assign({}, state.answers[id], {v});
+  btn.parentNode.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b===btn?'true':'false'));
+  progress();
+}
+function note(id,v){ state.answers[id] = Object.assign({}, state.answers[id], {note:v}); }
+function val(id,v){
+  state.answers[id] = {v};
+  const box = document.getElementById('talkbox');
+  if (box && id === 'a1') box.innerHTML = talkPanel(v);
+  progress();
+}
+
+/* --- standard activity library -------------------------------------------
+   Pick an activity and its standard rows are added to the assessment table,
+   ready to edit or delete. 'General activities' loads the site-wide set.  */
+function activityPanel(){
+  const keys = Object.keys(ACTIVITIES);
+  return `<span class="num">STANDARD ACTIVITIES</span>
+    <label class="qt" for="actsel">Load a standard activity</label>
+    <p class="guide">Adds the usual hazards, effects, persons affected and control measures
+    for that activity. Edit, delete or add rows afterwards — nothing is fixed.</p>
+    <select id="actsel">
+      <option value="">Choose an activity…</option>
+      <option value="__general">General activities — the standard site-wide set (${GENERAL_SET.reduce((n,k)=>n+(ACTIVITIES[k]||[]).length,0)} rows)</option>
+      ${keys.map(k=>`<option value="${esc(k)}">${esc(k)} (${ACTIVITIES[k].length})</option>`).join('')}
+    </select>
+    <button class="btn ghost" style="padding:12px;margin-top:10px" onclick="loadActivity()">Add to the assessment</button>`;
+}
+function loadActivity(){
+  const sel = document.getElementById('actsel');
+  const key = sel && sel.value;
+  if (!key){ toast('Choose an activity first'); return; }
+
+  const keys = key === '__general' ? GENERAL_SET : [key];
+  const rows = keys.reduce((acc, k) => acc.concat(ACTIVITIES[k] || []), []);
+  if (!rows.length){ toast('Nothing to add'); return; }
+
+  setField('a1', key === '__general' ? 'General site activities' : key.split(' — ')[0]);
+  state.answers.a4 = state.answers.a4 || {rows:[]};
+  // deep copy, so editing a row never changes the library
+  rows.forEach(r => state.answers.a4.rows.push(JSON.parse(JSON.stringify(r))));
+  renderRows('a4');
+  progress();
+  sel.value = '';
+  toast(`${rows.length} row${rows.length>1?'s':''} added`);
+  const box = document.getElementById('rp_a4');
+  if (box) box.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+/* --- standard method statement outlines ----------------------------------
+   These give you the usual sequence, plant, PPE and emergency arrangements
+   for a common task. They are a skeleton — every one needs the real site
+   detail adding before it means anything.                                */
+function methodPanel(){
+  const keys = Object.keys(METHODS);
+  return `<span class="num">STANDARD OUTLINES</span>
+    <label class="qt" for="methsel">Load a standard method statement</label>
+    <p class="guide">Fills the scope, sequence of operations, plant list, PPE and emergency
+    arrangements. <b>Everything then needs editing to the actual job</b> — the outlines contain
+    placeholders like [AREA] and [WEIGHT] that must be replaced.</p>
+    <select id="methsel">
+      <option value="">Choose an outline…</option>
+      ${keys.map(k=>`<option value="${esc(k)}">${esc(k)} (${METHODS[k].steps.length} steps)</option>`).join('')}
+    </select>
+    <button class="btn ghost" style="padding:12px;margin-top:10px" onclick="loadMethod()">Load into this method statement</button>`;
+}
+function setField(id, v, appendIfFilled){
+  const cur = (state.answers[id] || {}).v || '';
+  const val = (cur && appendIfFilled) ? (cur + '\n\n' + v) : (cur ? cur : v);
+  state.answers[id] = { v: val };
+  const el = document.getElementById('i_' + id);
+  if (el) el.value = val;
+}
+function loadMethod(){
+  const sel = document.getElementById('methsel');
+  const key = sel && sel.value;
+  if (!key){ toast('Choose an outline first'); return; }
+  const m = METHODS[key];
+  if (!m) return;
+
+  // name the job after the outline, so the record identifies itself
+  setField('a1', key.split(' — ')[0]);
+  setField('b1', m.scope);
+  setField('g8', m.ppe);
+  setField('i1', m.emergency);
+
+  state.answers.c1 = state.answers.c1 || {rows:[]};
+  m.steps.forEach(r => state.answers.c1.rows.push(JSON.parse(JSON.stringify(r))));
+  renderRows('c1');
+
+  state.answers.e1 = state.answers.e1 || {rows:[]};
+  m.plant.forEach(r => state.answers.e1.rows.push(JSON.parse(JSON.stringify(r))));
+  renderRows('e1');
+
+  progress();
+  sel.value = '';
+  toast(`${m.steps.length} steps loaded — now edit to the real job`);
+  const box = document.getElementById('rp_c1');
+  if (box) box.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+/* --- toolbox talk library ------------------------------------------------
+   Pick a topic and the prepared talk appears. Use it as written, drop the
+   points into the record, print it with an attendance grid, or ignore it
+   entirely and type your own.                                            */
+function talkPanel(topic){
+  const t = topic && TALKS[topic];
+  if (!t) return `<div class="q talkq"><span class="num">TALK NOTES</span>
+    <p class="guide" style="border:0;padding:0;margin:0">Choose a topic above and a prepared
+    talk will appear here — what to say, questions to ask, and a printable sheet with an
+    attendance grid. Or write your own below.</p></div>`;
+  return `<div class="q talkq">
+    <span class="num">PREPARED TALK</span>
+    <label class="qt">${esc(topic)}</label>
+    <p class="why">${esc(t.why)}</p>
+    <div class="tgrid">
+      <div class="tcol">
+        <div class="tsec">Points to cover</div>
+        <ol class="tlist">${t.points.map(p=>`<li>${esc(p)}</li>`).join('')}</ol>
+      </div>
+      <div class="ddcol do"><h5>Do</h5><ul>${t.do.map(p=>`<li>${esc(p)}</li>`).join('')}</ul></div>
+      <div class="ddcol dont"><h5>Don't</h5><ul>${t.dont.map(p=>`<li>${esc(p)}</li>`).join('')}</ul></div>
+    </div>
+    <div class="tsec">Ask the group</div>
+    <ol class="tlist ask">${t.ask.map(p=>`<li>${esc(p)}</li>`).join('')}</ol>
+    <p class="tref">${esc(t.ref)}</p>
+    <button class="btn ghost" style="padding:12px" onclick="useTalk()">Use these points in the record</button>
+    <button class="btn ghost" style="padding:12px" onclick="printTalk()">Download talk sheet (PDF)</button>
+  </div>`;
+}
+function useTalk(){
+  const topic = state.answers.a1 && state.answers.a1.v;
+  const t = topic && TALKS[topic];
+  if (!t){ toast('Choose a topic first'); return; }
+  const text = t.points.map((p,i)=>`${i+1}. ${p}`).join('\n')
+    + '\n\nDO:\n' + t.do.map(p=>'- '+p).join('\n')
+    + '\n\nDO NOT:\n' + t.dont.map(p=>'- '+p).join('\n');
+  const box = document.getElementById('i_b1');
+  if (box){ box.value = text; state.answers.b1 = {v:text}; box.focus(); progress(); toast('Points added — edit as you like'); }
+}
+function printTalk(){
+  const topic = state.answers.a1 && state.answers.a1.v;
+  const t = topic && TALKS[topic];
+  if (!t){ toast('Choose a topic first'); return; }
+  try { PDF.downloadTalk(topic, t, state.site, (state.site||{}).user || ''); toast('Talk sheet downloaded'); }
+  catch(e){ console.error(e); toast('Could not build the talk sheet'); }
+}
+function rate(path,k,v){
+  const cur = getPath(path) || {l:1,s:1};
+  cur[k] = +v; cur.score = cur.l*cur.s;
+  setPath(path, cur);
+  const el = document.getElementById('sc_'+path.replace(/\./g,'_'));
+  if(el){ const b = riskBand(cur.score);
+    el.style.background = b.c;
+    el.className = 'score' + (b.l==='MEDIUM' ? ' med' : '');
+    el.innerHTML = cur.score+'<small>'+b.l+'</small>'; }
+  progress();
+}
+function getPath(p){
+  const [id,i,col] = p.split('.');
+  if(i===undefined) return state.answers[id]?.v;
+  return state.answers[id]?.rows?.[+i]?.[col];
+}
+function setPath(p,v){
+  const [id,i,col] = p.split('.');
+  if(i===undefined){ state.answers[id] = {v}; return; }
+  state.answers[id] = state.answers[id] || {rows:[]};
+  state.answers[id].rows[+i] = state.answers[id].rows[+i] || {};
+  state.answers[id].rows[+i][col] = v;
+}
+/* --- repeating tables ------------------------------------------------------
+   Rows live in state.answers[id].rows. The whole block is re-rendered from
+   that array, so rows can be added by hand or loaded from the activity
+   library and still show their values.                                    */
+function addRow(id, values){
+  state.answers[id] = state.answers[id] || {rows:[]};
+  state.answers[id].rows.push(values || {});
+  renderRows(id);
+  progress();
+}
+function removeRow(id, i){
+  state.answers[id].rows.splice(i, 1);
+  renderRows(id);
+  progress();
+}
+function renderRows(id){
+  const it = findItem(id);
+  const wrap = document.getElementById('rp_' + id);
+  if (!wrap) return;
+  const rows = (state.answers[id] || {}).rows || [];
+  wrap.innerHTML = rows.map((row, i) => rowHtml(it, id, i, row)).join('');
+}
+function rowHtml(it, id, i, row){
+  const lbl = it.rowLabel || 'Item';
+  const lab = t => `<label style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)">${esc(t)}</label>`;
+  const body = it.columns.map(c => {
+    const p = `${id}.${i}.${c.id}`;
+    const v = row[c.id];
+    const inner =
+      c.type === 'risk'     ? riskCtrl(id, p, v)
+    : c.type === 'sign'     ? signBox(p)
+    : c.type === 'textarea' ? `<textarea oninput="setPath('${p}',this.value)">${esc(v||'')}</textarea>`
+    :                         `<input type="text" value="${esc(v||'')}" oninput="setPath('${p}',this.value)">`;
+    return `<div class="fld fld-${c.type}">${lab(c.label)}${inner}</div>`;
+  }).join('');
+  return `<div class="rep ${it.layout==='ra'?'ra':''}"><h4>${esc(lbl)} ${i+1}</h4>
+    <div class="fldgrid">${body}</div>
+    <button class="del" onclick="removeRow('${id}',${i})">Remove this ${esc(lbl.toLowerCase())}</button></div>`;
+}
+
+function findItem(id){
+  for(const s of state.form.sections) for(const i of s.items) if(i.id===id) return i;
+}
+/* --- attaching a document ------------------------------------------------
+   Held inside the record on this device. Images are embedded in the PDF;
+   anything else travels with the record and can be downloaded from it.   */
+const FILE_MAX = 3 * 1024 * 1024;   // 3MB — device storage is limited
+
+async function addFile(id, input){
+  const file = input.files[0]; if (!file) return;
+  if (file.size > FILE_MAX){
+    toast('File too large — 3MB maximum');
+    input.value = ''; return;
+  }
+  try {
+    const data = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result);
+      fr.onerror = () => rej(new Error('read failed'));
+      fr.readAsDataURL(file);
+    });
+    state.answers[id] = { file: { name:file.name, type:file.type||'file', size:file.size, data } };
+    drawFile(id);
+    toast('File attached');
+  } catch(e){ toast('Could not read that file'); }
+  input.value = '';
+  progress();
+}
+function drawFile(id){
+  const box = document.getElementById('fl_' + id); if (!box) return;
+  const f = (state.answers[id] || {}).file;
+  box.innerHTML = f ? `<div class="attach">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M14 3v5h5"/><path d="M6 3h9l5 5v13H6z"/></svg>
+      <span class="txt"><b>${esc(f.name)}</b><small>${fileSize(f.size)}</small></span>
+      <button onclick="rmFile('${id}')" aria-label="Remove">&times;</button>
+    </div>` : '';
+}
+function rmFile(id){ delete state.answers[id]; drawFile(id); progress(); }
+const fileSize = n => n < 1024 ? n + ' B'
+  : n < 1048576 ? (n/1024).toFixed(0) + ' KB' : (n/1048576).toFixed(1) + ' MB';
+
+function downloadAttachment(recId, itemId){
+  const r = state.records.find(x => x.id === recId);
+  const f = ((r.answers||{})[itemId] || {}).file; if (!f) return;
+  const a = document.createElement('a');
+  a.href = f.data; a.download = f.name; a.click();
+}
+
+async function addPhoto(id, input){
+  const file = input.files[0]; if(!file) return;
+  const data = await shrink(file);
+  state.answers[id] = state.answers[id] || {photos:[]};
+  state.answers[id].photos = state.answers[id].photos || [];
+  state.answers[id].photos.push(data);
+  drawThumbs(id); input.value=''; progress();
+}
+function drawThumbs(id){
+  const box = document.getElementById('th_'+id);
+  const ps = state.answers[id]?.photos || [];
+  box.innerHTML = ps.map((p,i)=>`<figure><img src="${p}" alt=""><button onclick="rmPhoto('${id}',${i})" aria-label="Remove photo">&times;</button></figure>`).join('');
+}
+function rmPhoto(id,i){ state.answers[id].photos.splice(i,1); drawThumbs(id); }
+function shrink(file){
+  return new Promise(res=>{
+    const r = new FileReader();
+    r.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 900, sc = Math.min(1, max/Math.max(img.width,img.height));
+        const c = document.createElement('canvas');
+        c.width = img.width*sc; c.height = img.height*sc;
+        c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+        res(c.toDataURL('image/jpeg',0.6));
+      };
+      img.src = r.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+/* Autosave. A form half-filled on a roof, then interrupted, has to still be
+   there afterwards. Saved a second after you stop typing.               */
+let draftTimer = null;
+function saveDraft(){
+  if (!state.form) return;
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(async () => {
+    try {
+      await DB.set('draft:' + state.form.id, {
+        answers: state.answers, sig: state.sig,
+        projectId: (state.site||{}).id, at: Date.now(),
+      });
+      const el = document.getElementById('draftnote');
+      if (el) el.textContent = 'Saved on this device';
+    } catch(e){ console.warn('draft save failed', e); }
+  }, 900);
+}
+
+function progress(){
+  saveDraft();
+  const total = countItems(state.form);
+  const done = Object.keys(state.answers).filter(k=>{
+    const a = state.answers[k];
+    return a && (a.v!==undefined && a.v!=='' || a.rows?.length || a.photos?.length || a.file);
+  }).length;
+  const p = $('#prog'); if(p) p.textContent = `${done} of ${total} answered`;
+}
+
+/* --- signatures -----------------------------------------------------------
+   Signing happens in a pop-up rather than inline. An inline canvas swallows
+   the scroll gesture, so a finger dragged over it to scroll the page leaves
+   a stray mark. Tapping the box opens a full-screen pad instead.         */
+const safeKey = k => String(k).replace(/\./g, '_');
+
+function getSign(key){ return key === 'main' ? (state.sig || '') : (getPath(key) || ''); }
+function setSign(key, v){ if (key === 'main') state.sig = v; else setPath(key, v); }
+
+function signBox(key){
+  const data = getSign(key);
+  return `<div class="signwrap" id="sw_${safeKey(key)}">
+    <button type="button" class="signbox ${data ? 'signed' : ''}" onclick="openSign('${key}')">
+      ${data ? `<img src="${data}" alt="Signature">`
+             : `<span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 19c3 0 4-10 7-10s3 7 5 7 2-4 4-4 2 2 2 2"/></svg> Tap to sign</span>`}
+    </button>
+    ${data ? `<button type="button" class="signclear" onclick="clearSign('${key}')">Clear signature</button>` : ''}
+  </div>`;
+}
+function refreshSign(key){
+  const el = document.getElementById('sw_' + safeKey(key));
+  if (el) el.outerHTML = signBox(key);
+}
+function clearSign(key){ setSign(key, ''); refreshSign(key); progress(); }
+
+let padCtx = null, padDrawn = false, padKey = null;
+
+function openSign(key){
+  padKey = key; padDrawn = false;
+  const el = document.createElement('div');
+  el.className = 'signmodal'; el.id = 'signmodal';
+  el.innerHTML = `<div class="signpanel" role="dialog" aria-modal="true" aria-label="Signature">
+      <div class="signhead"><b>Sign below</b><span>Use your finger or a stylus</span></div>
+      <canvas id="padbig"></canvas>
+      <div class="signfoot">
+        <button type="button" class="btn ghost" onclick="closeSign()">Cancel</button>
+        <button type="button" class="btn ghost" onclick="wipePad()">Clear</button>
+        <button type="button" class="btn go" onclick="doneSign()">Done</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  document.body.style.overflow = 'hidden';
+
+  const c = document.getElementById('padbig');
+  const dpr = window.devicePixelRatio || 1;
+  c.width = c.offsetWidth * dpr; c.height = c.offsetHeight * dpr;
+  padCtx = c.getContext('2d');
+  padCtx.scale(dpr, dpr);
+  padCtx.lineWidth = 2.6; padCtx.lineCap = 'round'; padCtx.lineJoin = 'round';
+  padCtx.strokeStyle = '#14171A';
+
+  // start from the existing signature, so opening it again does not wipe it
+  const existing = getSign(key);
+  if (existing){
+    const img = new Image();
+    img.onload = () => padCtx.drawImage(img, 0, 0, c.offsetWidth, c.offsetHeight);
+    img.src = existing;
+    padDrawn = true;
+  }
+
+  let drawing = false;
+  const pos = e => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  c.addEventListener('pointerdown', e => {
+    drawing = true; padDrawn = true; c.setPointerCapture(e.pointerId);
+    padCtx.beginPath(); padCtx.moveTo(...pos(e)); e.preventDefault();
+  });
+  c.addEventListener('pointermove', e => {
+    if (!drawing) return;
+    padCtx.lineTo(...pos(e)); padCtx.stroke(); e.preventDefault();
+  });
+  c.addEventListener('pointerup', () => { drawing = false; });
+  c.addEventListener('pointerleave', () => { drawing = false; });
+}
+function wipePad(){
+  const c = document.getElementById('padbig');
+  if (padCtx && c){ padCtx.clearRect(0, 0, c.width, c.height); padDrawn = false; }
+}
+function closeSign(){
+  const el = document.getElementById('signmodal');
+  if (el) el.remove();
+  document.body.style.overflow = '';
+  padCtx = null; padKey = null;
+}
+function doneSign(){
+  const c = document.getElementById('padbig');
+  if (!padDrawn){ toast('Nothing signed yet'); return; }
+  const key = padKey;
+  setSign(key, c.toDataURL('image/png'));
+  closeSign();
+  refreshSign(key);
+  progress();
+}
+
+/* When a form opens, draw any rows that already exist (the activity library
+   can add them before the table is on screen) and set the counter going. */
+function mountFill(){
+  state.form.sections.forEach(sec => sec.items.forEach(i => {
+    if (i.type === 'repeat') renderRows(i.id);
+  }));
+  progress();
+}
+
+function confirmExit(){
+  // nothing is lost: the draft is already on the device
+  go('home');
+}
+
+/* ---- submit ---- */
+/* A record names itself from one of its own answers, so a list of six method
+   statements reads as the six jobs rather than six identical titles. */
+function recordTitle(form, answers){
+  if (!form.titleFrom) return form.title;
+  const v = (answers[form.titleFrom] || {}).v;
+  const label = (typeof v === 'string' ? v : '').trim();
+  if (!label) return form.title;
+  const short = label.length > 60 ? label.slice(0, 57).trim() + '…' : label;
+  return `${form.title} (${short})`;
+}
+
+async function submitForm(){
+  const by = $('#signedBy').value.trim();
+  if(!by){ toast('Enter your name before completing'); $('#signedBy').focus(); return; }
+  if(!state.sig){ toast('Tap the signature box to sign'); return; }
+
+  const f = state.form;
+  const at = new Date().toISOString();
+  const seq = String(state.records.filter(r=>r.formId===f.id).length + 1).padStart(3,'0');
+  const ref = `WRM-${f.code}-${at.slice(0,10).replace(/-/g,'')}-${seq}`;
+  let fails = 0;
+  f.sections.forEach(s=>s.items.forEach(i=>{ if(state.answers[i.id]?.v==='fail') fails++; }));
+
+  const rec = {
+    id: crypto.randomUUID(), ref, formId:f.id, code:f.code, title: recordTitle(f, state.answers),
+    projectId: (state.site||{}).id || null,
+    at, by, fails,
+    site: Object.assign({}, state.site),
+    answers: JSON.parse(JSON.stringify(state.answers)),
+    sig: state.sig,
+    createdBy: (state.profile||{}).id,
+    synced: 0,
+  };
+
+  // on the device first — this must not depend on a connection
+  await DB.putRecord(rec);
+  state.records.unshift(rec);
+  await DB.del('draft:' + f.id);
+
+  state.record = rec;
+  state.view = 'record';
+  render();
+
+  const res = await CLOUD.pushRecord(rec);
+  if (res.queued){
+    state.pendingCount = (await DB.pending()).length;
+    paintSync();
+    toast('Saved on this device — will sync when back online');
+  } else {
+    rec.synced = 1;
+    await DB.putRecord(rec);
+    paintSync();
+    toast('Saved and shared with the team');
+    fileRecordPDF(rec);          // files the signed PDF against the project
+  }
+}
+
+/* ---- people (superuser) --------------------------------------------------
+   Accounts are created in the Supabase dashboard for now, because creating a
+   login needs a privileged key that must never sit in a browser. This screen
+   sets up the profile that goes with it — the name, role and real email —
+   and tells you exactly what to type into the dashboard.               */
+function viewUsers(){
+  const rows = (state.users||[]).map(u => `
+    <button class="row" onclick="editUser('${u.id}')">
+      <span class="code">${esc((u.role||'site').slice(0,5).toUpperCase())}</span>
+      <span class="txt"><b>${esc(u.user_id)}</b>
+        <small>${esc(u.full_name||'')}${u.email?' · '+esc(u.email):''}</small></span>
+      <span class="pill ${u.active?'go':'grey'}">${u.active?'ACTIVE':'OFF'}</span>
+    </button>`).join('');
+  return crumb('Home',"go('home')",'People') + `<main>
+    <div class="banner"><b>Adding someone</b>
+      Create their login in the Supabase dashboard first (Authentication &rarr; Add user),
+      then add their profile here so the app knows their name and role.</div>
+    <div class="eyebrow">Accounts &middot; ${(state.users||[]).length}</div>
+    ${rows || '<div class="empty"><b>No profiles yet</b></div>'}
+    <div class="eyebrow">Add</div>
+    <button class="btn primary" onclick="newUser()">+ Add a person</button>
+  </main>`;
+}
+
+async function openUsers(){
+  state.view = 'users'; render();
+  try { state.users = await CLOUD.listUsers(); render(); }
+  catch(e){ toast('Could not load people'); }
+}
+
+function newUser(){ userForm(null); }
+function editUser(id){ userForm((state.users||[]).find(u => u.id === id)); }
+
+function userForm(u){
+  const isNew = !u;
+  openSheet(isNew ? 'Add a person' : 'Edit ' + u.user_id, `
+    <div class="q"><label class="qt">User ID</label>
+      <p class="guide">What they type at the keypad. Letters, numbers, dots, hyphens or underscores.</p>
+      <input type="text" id="u_id" value="${esc(u?u.user_id:'')}" placeholder="e.g. WhitfieldD" ${u?'disabled':''}></div>
+    <div class="q"><label class="qt">Full name</label>
+      <input type="text" id="u_name" value="${esc(u?u.full_name:'')}" placeholder="Dave Whitfield"></div>
+    <div class="q"><label class="qt">Email (optional)</label>
+      <p class="guide">Their real address, for notifications later. Not used to sign in.</p>
+      <input type="text" id="u_email" value="${esc(u&&u.email?u.email:'')}" placeholder="dave@example.com"></div>
+    <div class="q"><label class="qt">Role</label>
+      <select id="u_role">
+        ${['site','manager','superuser'].map(r=>`<option value="${r}"${u&&u.role===r?' selected':''}>${
+          r==='site'?'Site — records on projects shared with them'
+          : r==='manager'?'Manager — creates projects, sees everything shared'
+          : 'Superuser — everything, including people'}</option>`).join('')}
+      </select></div>
+    ${u ? `<div class="q"><label class="qt">Status</label>
+      <select id="u_active"><option value="1"${u.active?' selected':''}>Active</option>
+      <option value="0"${!u.active?' selected':''}>Deactivated</option></select></div>` : ''}
+    ${isNew ? `<div class="banner" id="u_hint"><b>Create the login first</b>
+      Enter a User ID above and this will tell you exactly what to put into Supabase.</div>` : ''}
+    <button class="btn go" onclick="saveUser(${isNew?'null':`'${u.id}'`})">${isNew?'Save profile':'Save changes'}</button>`);
+
+  if (isNew){
+    const idBox = document.getElementById('u_id');
+    idBox.addEventListener('input', () => {
+      const v = idBox.value.trim();
+      const hint = document.getElementById('u_hint');
+      if (!hint) return;
+      hint.innerHTML = CLOUD.validId(v)
+        ? `<b>In Supabase &rarr; Authentication &rarr; Add user</b>
+           Email: <code>${esc(CLOUD.emailFor(v))}</code><br>
+           Password: <code>${esc(v.toLowerCase())}#<i>PIN</i></code> &mdash; replace <i>PIN</i> with their 5 digits<br>
+           Tick <b>Auto confirm user</b>.`
+        : `<b>Not a valid User ID</b> Letters, numbers, dots, hyphens or underscores, 3 characters or more.`;
+    });
+  }
+}
+
+async function saveUser(existingId){
+  const idBox = document.getElementById('u_id');
+  const userId = (idBox.value || '').trim();
+  const name = (document.getElementById('u_name').value || '').trim();
+  const email = (document.getElementById('u_email').value || '').trim();
+  const role = document.getElementById('u_role').value;
+  const activeBox = document.getElementById('u_active');
+
+  if (!CLOUD.validId(userId)){ toast('Check the User ID'); return; }
+  if (!name){ toast('Enter their name'); return; }
+
+  try {
+    if (existingId){
+      await CLOUD.saveProfile({ id: existingId, user_id: userId, full_name: name,
+        email: email || null, role, active: activeBox ? activeBox.value === '1' : true });
+    } else {
+      // the login must exist first: the profile id is a foreign key onto it
+      await CLOUD.saveProfile({ user_id: userId, full_name: name,
+        email: email || null, role, active: true });
+    }
+    closeSheet();
+    state.users = await CLOUD.listUsers();
+    render();
+    toast('Saved');
+  } catch(e){
+    console.error(e);
+    toast(e.message && e.message.includes('foreign key')
+      ? 'Create their login in Supabase first, then save this again'
+      : 'Could not save — see console');
+  }
+}
+
+/* ---- sharing a project --------------------------------------------------- */
+async function openShare(){
+  if (!state.site){ toast('Pick a project first'); return; }
+  try {
+    const [users, shares] = await Promise.all([CLOUD.listUsers(), CLOUD.listShares(state.site.id)]);
+    const meId = (state.profile||{}).id;
+    const shared = new Set(shares.map(x => x.user_id));
+    const others = users.filter(u => u.id !== meId && u.id !== state.site.ownerId && u.active);
+    openSheet('Share ' + state.site.name, `
+      <p class="sheetnote">Anyone ticked can see this project and everything recorded on it.
+        Accident reports stay private to whoever raised them.</p>
+      ${others.length ? others.map(u => `
+        <label class="pick">
+          <input type="checkbox" class="sharebox" value="${u.id}"${shared.has(u.id)?' checked':''}>
+          <span class="txt"><b>${esc(u.user_id)}</b><small>${esc(u.full_name||'')} · ${esc(u.role)}</small></span>
+        </label>`).join('') : '<div class="empty"><b>Nobody else to share with yet</b></div>'}
+      <button class="btn go" onclick="saveShares()">Save sharing</button>`);
+  } catch(e){ toast('Could not load the list'); }
+}
+
+async function saveShares(){
+  const boxes = [...document.querySelectorAll('.sharebox')];
+  const want = new Set(boxes.filter(b => b.checked).map(b => b.value));
+  try {
+    const have = new Set((await CLOUD.listShares(state.site.id)).map(x => x.user_id));
+    for (const id of want) if (!have.has(id)) await CLOUD.share(state.site.id, id);
+    for (const id of have) if (!want.has(id)) await CLOUD.unshare(state.site.id, id);
+    closeSheet();
+    toast(want.size ? `Shared with ${want.size}` : 'Sharing removed');
+  } catch(e){ console.error(e); toast('Could not save sharing'); }
+}
+
+/* ---- documents ------------------------------------------------------------ */
+const FOLDERS = ['Toolbox talks','RAMS','Inspections','Accidents','Project documents'];
+
+function viewDocs(){
+  const list = state.docs || [];
+  const byFolder = FOLDERS.map(f => [f, list.filter(d => d.folder === f)]);
+  return crumb('Home',"go('home')",'Documents') + `<main>
+    <div class="banner"><b>${esc((state.site||{}).name||'No project')}</b>
+      Signed PDFs are filed here automatically. You can also upload anything the
+      site needs to hand — the construction phase plan, the asbestos register, drawings.</div>
+    <div class="eyebrow">Upload</div>
+    <div class="q">
+      <label class="qt">Add a document</label>
+      <select id="d_folder">${FOLDERS.map(f=>`<option${f==='Project documents'?' selected':''}>${f}</option>`).join('')}</select>
+      <input type="file" id="d_file" style="margin-top:10px">
+      <button class="btn ghost" style="padding:12px;margin-top:10px" onclick="uploadDoc()">Upload</button>
+    </div>
+    ${byFolder.map(([f, docs]) => docs.length ? `
+      <div class="eyebrow">${esc(f)} &middot; ${docs.length}</div>
+      ${docs.map(d => `
+        <div class="row">
+          <button class="tap" onclick="openDoc('${d.id}')">
+            <span class="txt"><b>${esc(d.name)}</b>
+              <small>${uk(d.uploaded_at)}${d.size_bytes?' · '+fileSize(d.size_bytes):''}</small></span>
+          </button>
+          <button class="mini" onclick="openDoc('${d.id}')">OPEN</button>
+        </div>`).join('')}` : '').join('')}
+    ${list.length ? '' : '<div class="empty"><b>Nothing filed yet</b>Complete a form or upload a document.</div>'}
+  </main>`;
+}
+
+async function openDocs(){
+  if (!state.site){ toast('Pick a project first'); go('projects'); return; }
+  state.view = 'docs'; state.docs = []; render();
+  try { state.docs = await CLOUD.listDocuments(state.site.id); render(); }
+  catch(e){ toast('Could not load documents'); }
+}
+
+async function uploadDoc(){
+  const f = document.getElementById('d_file').files[0];
+  const folder = document.getElementById('d_folder').value;
+  if (!f){ toast('Choose a file first'); return; }
+  if (f.size > 15 * 1024 * 1024){ toast('That file is over 15MB'); return; }
+  toast('Uploading…');
+  try {
+    await CLOUD.uploadDocument(state.site.id, folder, f);
+    state.docs = await CLOUD.listDocuments(state.site.id);
+    render(); toast('Uploaded');
+  } catch(e){ console.error(e); toast(e.message || 'Upload failed'); }
+}
+
+async function openDoc(id){
+  const d = (state.docs||[]).find(x => x.id === id); if (!d) return;
+  try {
+    const url = await CLOUD.documentUrl(d.path);
+    window.open(url, '_blank');
+  } catch(e){ toast('Could not open that document'); }
+}
+
+/* File the signed PDF against the project, so the office has it without
+   anyone emailing anything. */
+async function fileRecordPDF(rec){
+  if (!navigator.onLine) return;
+  const form = FORMS.find(f => f.id === rec.formId);
+  const folder = form.cat === 'toolbox' ? 'Toolbox talks'
+               : form.cat === 'ra' ? 'RAMS'
+               : form.cat === 'incident' ? 'Accidents' : 'Inspections';
+  try {
+    const blob = PDF.blob(rec, form);
+    const file = new File([blob], PDF.filename(rec), { type:'application/pdf' });
+    await CLOUD.uploadDocument(rec.projectId, folder, file, rec.id);
+  } catch(e){ console.warn('could not file the PDF:', e.message || e); }
+}
+
+/* ---- audit trail ---------------------------------------------------------- */
+function viewAudit(){
+  const rows = (state.audit||[]).map(a => {
+    const who = (state.users||[]).find(u => u.id === a.changed_by);
+    const fields = (a.changed_fields||[]).filter(f => !['updated_at','answers','signature'].includes(f));
+    return `<div class="q">
+      <span class="num">${uk(a.changed_at)}</span>
+      <label class="qt">${esc(who ? who.user_id : 'Someone')} ${a.action === 'insert' ? 'created' : a.action === 'delete' ? 'deleted' : 'changed'} a ${esc(a.table_name.replace(/s$/,''))}</label>
+      ${a.action === 'update' && fields.length ? fields.map(f => `
+        <p class="guide"><b>${esc(f)}</b><br>
+          <span style="color:var(--stop)">was:</span> ${esc(String((a.old_values||{})[f] ?? '—')).slice(0,120)}<br>
+          <span style="color:var(--go)">now:</span> ${esc(String((a.new_values||{})[f] ?? '—')).slice(0,120)}</p>`).join('')
+      : `<p class="guide">${esc(((a.new_values||a.old_values||{}).title) || ((a.new_values||a.old_values||{}).name) || '')}</p>`}
+    </div>`;
+  }).join('');
+  return crumb('Home',"go('home')",'History') + `<main>
+    <div class="banner"><b>Every change on ${esc((state.site||{}).name||'this project')}</b>
+      Written by the database itself, so it cannot be edited or removed by anyone.</div>
+    ${rows || '<div class="empty"><b>Nothing recorded yet</b></div>'}
+  </main>`;
+}
+
+async function openAudit(){
+  if (!state.site){ toast('Pick a project first'); return; }
+  state.view = 'audit'; state.audit = []; render();
+  try {
+    const [audit, users] = await Promise.all([CLOUD.auditFor(state.site.id), CLOUD.listUsers()]);
+    state.audit = audit; state.users = users; render();
+  } catch(e){ toast('Could not load the history'); }
+}
+
+/* ---- reports -------------------------------------------------------------
+   Pulls everything recorded on this device into a spreadsheet. Built on the
+   device, so it works with no signal. Each report is a tab in one .xlsx.   */
+function viewReports(){
+  const n = state.records.length;
+  const counts = {
+    ac: state.records.filter(r => r.formId === 'ac01').length,
+    hz: state.records.filter(r => r.formId === 'hz01').length,
+    ra: state.records.filter(r => r.formId === 'ra01').length,
+    tb: state.records.filter(r => r.formId === 'tb01').length,
+    ms: state.records.filter(r => r.formId === 'ms01').length,
+    fails: state.records.reduce((t, r) => t + (r.fails || 0), 0),
+  };
+  const row = (t, d, cnt, fn) => `
+    <button class="row" onclick="${fn}">
+      <span class="txt"><b>${t}</b><small>${d}</small></span>
+      <span class="where">${cnt}</span>
+    </button>`;
+  return crumb('Home',"go('home')",'Reports') + `<main>
+    <div class="banner"><b>Everything on this device</b>
+      Reports cover all projects, not just the one you're on. Nothing leaves the
+      device until you share the file yourself.</div>
+
+    <div class="eyebrow">Download</div>
+    ${row('Full workbook','Every report below, as tabs in one spreadsheet', n+' records', "report('all')")}
+    ${row('Accidents &amp; incidents','Injuries, near misses, RIDDOR status, causes and actions', counts.ac, "report('ac')")}
+    ${row('Hazards reported','What was raised, where, how urgent and who it went to', counts.hz, "report('hz')")}
+    ${row('Projects','Every project with its record count and outstanding fails', state.projects.length, "report('proj')")}
+    ${row('Risk assessments','One row per hazard, with scores and further action', counts.ra, "report('ra')")}
+    ${row('Method statements','Summary plus every step, hazard and control', counts.ms, "report('ms')")}
+    ${row('Toolbox talks','Topic, attendance and actions arising', counts.tb, "report('tb')")}
+    ${row('Actions outstanding','Every item marked FAIL, across all forms and projects', counts.fails, "report('act')")}
+    ${row('All records','One row per form, with counts and the failed items spelled out', n, "report('recs')")}
+    ${row('Every answer','One row per question — the fullest view of everything recorded', n, "report('ans')")}
+
+    <div class="eyebrow">Backup</div>
+    <button class="btn ghost" onclick="exportAll()">Export raw data file (.json)</button>
+  </main>`;
+}
+
+const D = v => v ? new Date(v) : '';
+const projName = r => (r.site && r.site.name) || '';
+function ansOf(r, id){ const a = (r.answers||{})[id]; return a ? a.v : ''; }
+function ansText(r, id){ const v = ansOf(r, id); return (v && typeof v === 'object') ? '' : (v || ''); }
+
+function sheetProjects(){
+  const rows = [['Project','Reference','Address','Client','Records','Items failed','Last activity']];
+  state.projects.forEach(pj => {
+    const rs = state.records.filter(r => r.projectId === pj.id);
+    rows.push([pj.name, pj.ref||'', pj.address||'', pj.client||'', rs.length,
+      rs.reduce((t,r)=>t+(r.fails||0),0),
+      rs.length ? D(rs[0].at) : '']);
+  });
+  return { name:'Projects', widths:[30,16,40,24,10,12,18], rows };
+}
+/* how an answer of any type reads in a spreadsheet cell */
+function answerText(item, a){
+  if (!a) return '';
+  if (item.type === 'check')
+    return { pass:'Pass', fail:'FAIL', na:'N/A' }[a.v] || 'Not answered';
+  if (item.type === 'risk'){
+    const v = a.v || {};
+    return v.score ? `${riskBand(v.score).l} ${v.score} (L${v.l} x S${v.s})` : '';
+  }
+  if (item.type === 'photo') return (a.photos || []).length ? `${a.photos.length} photo(s)` : '';
+  if (item.type === 'file') return a.file ? a.file.name : '';
+  if (item.type === 'talk') return '';
+  if (item.type === 'repeat') return `${((a.rows)||[]).length} entries`;
+  return a.v == null ? '' : String(a.v);
+}
+
+function sheetRecords(){
+  const rows = [['Date','Project','Form','Code','Reference','Completed by',
+                 'Items','Passed','Failed','N/A','Not answered','Failed items and notes']];
+  state.records.forEach(r => {
+    const f = FORMS.find(x => x.id === r.formId); if (!f) return;
+    let pass=0, fail=0, na=0, blank=0, total=0;
+    const detail = [];
+    f.sections.forEach(sec => sec.items.forEach(i => {
+      total++;
+      if (i.type !== 'check') return;
+      const a = (r.answers||{})[i.id] || {};
+      if (a.v === 'pass') pass++;
+      else if (a.v === 'na') na++;
+      else if (a.v === 'fail'){
+        fail++;
+        detail.push(i.text + (a.note ? ' — ' + a.note : ''));
+      } else blank++;
+    }));
+    rows.push([D(r.at), projName(r), r.title, r.code, r.ref, r.by,
+      total, pass, fail, na, blank, detail.join('\n')]);
+  });
+  return { name:'All records', widths:[18,26,34,8,24,20,8,9,8,8,13,70], rows };
+}
+
+/* one row per question, for every record — the fullest view of the data */
+function sheetAnswers(){
+  const rows = [['Date','Project','Form','Code','Reference','Section','Question','Answer','Note','Completed by']];
+  state.records.forEach(r => {
+    const f = FORMS.find(x => x.id === r.formId); if (!f) return;
+    f.sections.forEach(sec => sec.items.forEach(i => {
+      const a = (r.answers||{})[i.id] || {};
+      if (i.type === 'repeat'){
+        const label = i.rowLabel || 'Item';
+        ((a.rows)||[]).forEach((row, n) => {
+          const txt = i.columns.map(c => {
+            if (c.type === 'risk'){
+              const v = row[c.id] || {};
+              return v.score ? `${c.label}: ${riskBand(v.score).l} ${v.score}` : '';
+            }
+            return row[c.id] ? `${c.label}: ${row[c.id]}` : '';
+          }).filter(Boolean).join(' | ');
+          rows.push([D(r.at), projName(r), r.title, r.code, r.ref, sec.title,
+            `${label} ${n+1}`, txt, '', r.by]);
+        });
+        return;
+      }
+      rows.push([D(r.at), projName(r), r.title, r.code, r.ref, sec.title,
+        i.text, answerText(i, a), (a.note || ''), r.by]);
+    }));
+  });
+  return { name:'Every answer', widths:[18,24,30,8,24,26,56,30,44,18], rows };
+}
+function sheetActions(){
+  const rows = [['Date','Project','Reference','Form','Section','Item marked FAIL','Note recorded','Raised by','Status','Closed by','Closed date']];
+  state.records.forEach(r => {
+    const f = FORMS.find(x => x.id === r.formId); if (!f) return;
+    f.sections.forEach(sec => sec.items.forEach(i => {
+      const a = (r.answers||{})[i.id];
+      if (a && a.v === 'fail')
+        rows.push([D(r.at), projName(r), r.ref, r.title, sec.title, i.text, a.note||'', r.by, 'Open', '', '']);
+    }));
+  });
+  return { name:'Actions outstanding', widths:[18,24,24,28,24,50,44,18,10,16,14], rows };
+}
+function sheetAccidents(){
+  const rows = [['Date reported','Project','Reference','Person','Employer','Status','Date of event','Time',
+                 'Location','Type','Kind of event','What happened','Body part','Injury','Treatment',
+                 'Continued working','Days lost','RIDDOR reportable','Date reported to HSE','HSE reference',
+                 'Immediate cause','Root cause','Action to prevent recurrence','Action owner','Due','Recorded by']];
+  state.records.filter(r => r.formId === 'ac01').forEach(r => {
+    const g = id => ansText(r, id);
+    rows.push([D(r.at), projName(r), r.ref, g('a1'), g('a2'), g('a4'), D(g('b1')), g('b2'),
+      g('b3'), g('b4'), g('b5'), g('b6'), g('c1'), g('c2'), g('c3'),
+      g('c5'), g('c6'), g('d2'), D(g('d3')), g('d4'),
+      g('e1'), g('e2'), g('e4'), g('e5'), D(g('e6')), r.by]);
+  });
+  return { name:'Accidents', widths:[18,24,24,22,22,16,14,10,26,14,26,60,18,34,24,18,10,24,16,16,40,40,40,18,14,18], rows };
+}
+function sheetHazards(){
+  const rows = [['Date','Project','Reference','Location','Hazard','Likelihood','Severity','Score','Band',
+                 'Immediate action','Detail','Urgency','Passed to','Supervisor informed','Reported by']];
+  state.records.filter(r => r.formId === 'hz01').forEach(r => {
+    const g = id => ansText(r, id);
+    const rk = ansOf(r,'a4') || {};
+    const b = riskBand(rk.score || 1);
+    rows.push([D(r.at), projName(r), r.ref, g('a1'), g('a2'), rk.l||'', rk.s||'', rk.score||'', b.l,
+      g('b1'), g('b2'), g('b3'), g('b4'),
+      (r.answers.b5 && r.answers.b5.v === 'pass') ? 'Yes' : 'No', r.by]);
+  });
+  return { name:'Hazards reported', widths:[18,24,24,26,50,11,10,8,12,26,40,14,18,18,18], rows };
+}
+function sheetRA(){
+  const rows = [['Date','Project','Reference','Works','Location','Activity','Hazard','Effects','Persons affected',
+                 'Initial Lk','Initial Sv','Initial risk','Initial band','Control measures',
+                 'Residual Lk','Residual Sv','Residual risk','Residual band',
+                 'Action / comments','Review date','Assessed by']];
+  state.records.forEach(r => {
+    const f = FORMS.find(x => x.id === r.formId);
+    if (!f || f.id !== 'ra01') return;
+    const g = id => ansText(r, id);
+    const rowsIn = ((r.answers||{}).a4 || {}).rows || [];
+    rowsIn.forEach(h => {
+      const i = h.ri || {}, x = h.rr || {};
+      rows.push([D(r.at), projName(r), r.ref, g('a1'), g('a2'), h.a||'', h.h||'', h.e||'', h.p||'',
+        i.l||'', i.s||'', i.score||'', i.score?riskBand(i.score).l:'', h.c||'',
+        x.l||'', x.s||'', x.score||'', x.score?riskBand(x.score).l:'',
+        h.ac||'', D(g('a6')), r.by]);
+    });
+  });
+  return { name:'Risk assessments', widths:[18,24,24,30,22,26,34,26,26,10,10,10,12,60,10,10,10,12,44,14,18], rows };
+}
+
+function sheetToolbox(){
+  const rows = [['Date','Project','Reference','Topic','Subject','Delivered by','Location',
+                 'Minutes','Attendees','Signed','Attendee names','Talk version used',
+                 'Raised','Actions','Action owner','Next talk due','Recorded by']];
+  state.records.filter(r => r.formId === 'tb01').forEach(r => {
+    const g = id => ansText(r, id);
+    const att = ((r.answers||{}).c1 || {}).rows || [];
+    rows.push([D(r.at), projName(r), r.ref, g('a1'), g('a2'), g('a3'), g('a4'), g('a5'),
+      att.length, att.map(a => a.n).filter(Boolean).join(', '),
+      g('d1'), g('d2'), g('d3'), D(g('d4')), r.by]);
+  });
+  return { name:'Toolbox talks', widths:[18,24,24,34,30,20,24,10,11,9,60,34,40,40,18,14,18], rows };
+}
+
+function sheetMS(){
+  const rows = [['Date','Project','Reference','Task','Location','Contractor','Person in charge',
+                 'Start','Duration','Revision','Steps','Operatives','Permits','Prepared by',
+                 'Approved by','Review date','Briefed','Signed']];
+  state.records.filter(r => r.formId === 'ms01').forEach(r => {
+    const g = id => ansText(r, id);
+    const steps = ((r.answers||{}).c1 || {}).rows || [];
+    const brief = ((r.answers||{}).k1 || {}).rows || [];
+    rows.push([D(r.at), projName(r), r.ref, g('a1'), g('a2'), g('a3'), g('a4'),
+      D(g('a6')), g('a7'), g('a9'), steps.length, g('d1'), g('g6'), g('j3'),
+      g('j4'), D(g('j5')), brief.length, brief.filter(b => b.s).length]);
+  });
+  return { name:'Method statements', widths:[18,24,24,40,26,26,22,14,16,14,8,11,24,20,20,14,9,8], rows };
+}
+
+/* every step of every method statement, one per row */
+function sheetMSSteps(){
+  const rows = [['Date','Project','Reference','Task','Step','What happens','Key hazards','Controls','Who']];
+  state.records.filter(r => r.formId === 'ms01').forEach(r => {
+    const task = ansText(r,'a1');
+    (((r.answers||{}).c1 || {}).rows || []).forEach((st, n) => {
+      rows.push([D(r.at), projName(r), r.ref, task, st.s || ('Step '+(n+1)),
+        st.d||'', st.h||'', st.c||'', st.w||'']);
+    });
+  });
+  return { name:'Method statement steps', widths:[18,24,24,34,26,60,40,60,20], rows };
+}
+
+function report(which){
+  if (!state.records.length && which !== 'proj'){ toast('Nothing recorded yet'); return; }
+  const map = {
+    proj:  [sheetProjects],
+    recs:  [sheetRecords],
+    ans:   [sheetAnswers],
+    act:   [sheetActions],
+    ac:    [sheetAccidents],
+    hz:    [sheetHazards],
+    ra:    [sheetRA],
+    tb:    [sheetToolbox],
+    ms:    [sheetMS, sheetMSSteps],
+    all:   [sheetProjects, sheetRecords, sheetActions, sheetAccidents, sheetHazards, sheetRA, sheetToolbox, sheetMS, sheetMSSteps, sheetAnswers],
+  };
+  const names = { proj:'Projects', recs:'All records', act:'Actions', ac:'Accidents',
+                  hz:'Hazards', ra:'Risk assessments', tb:'Toolbox talks', ms:'Method statements', ans:'Every answer', all:'Full report' };
+  try {
+    const sheets = map[which].map(fn => fn());
+    const stamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    XLS.download(sheets, `WRM SiteCheck ${names[which]} ${stamp}.xlsx`);
+    toast('Spreadsheet downloaded');
+  } catch(e){ console.error(e); toast('Could not build the spreadsheet'); }
+}
+
+/* ---- records ---- */
+function viewRecords(){
+  if(!state.records.length) return crumb('Home',"go('home')",'Records') + `<main>
+    <div class="empty"><b>Nothing recorded yet</b>Completed forms appear here with their time stamp and reference. They stay on this device until you export them.</div>
+    <button class="btn primary" onclick="openList('checklist')">Start a form</button>
+  </main>`;
+  const cur = state.site ? state.site.id : null;
+  const mine  = state.records.filter(r => r.projectId === cur);
+  const other = state.records.filter(r => r.projectId !== cur);
+  const rows = list => list.map(r=>`
+      <div class="row">
+        <button class="tap" onclick="openRecord('${r.id}')">
+          <span class="code">${r.code}</span>
+          <span class="txt"><b>${esc(r.title)}</b><small>${esc((r.site&&r.site.name)||'')} · ${uk(r.at)} · ${esc(r.by)}</small></span>
+          <span class="pill ${r.fails>0?'stop':'go'}">${r.fails>0? r.fails+' FAIL':'PASS'}</span>
+        </button>
+        <button class="mini" onclick="quickPDF('${r.id}')" title="Download PDF">PDF</button>
+      </div>`).join('');
+  return crumb('Home',"go('home')",state.records.length+' records') + `<main>
+    ${mine.length ? `<div class="eyebrow">${esc((state.site||{}).name||'This project')}</div>` + rows(mine) : ''}
+    ${other.length ? '<div class="eyebrow">Other projects</div>' + rows(other) : ''}
+    <div class="eyebrow">Housekeeping</div>
+    <button class="btn ghost" onclick="exportAll()">Export all records as a backup file</button>
+  </main>`;
+}
+function quickPDF(id){
+  const r = state.records.find(x => x.id === id);
+  const f = FORMS.find(x => x.id === r.formId);
+  try { PDF.download(r, f); toast('PDF downloaded'); }
+  catch(e){ console.error(e); toast('Could not build the PDF'); }
+}
+function openRecord(id){ state.record = state.records.find(r=>r.id===id); state.view='record'; render(); }
+
+function viewRecord(){
+  const r = state.record;
+  const f = FORMS.find(x=>x.id===r.formId);
+  const rows = [];
+  f.sections.forEach(s=>{
+    rows.push(`<div class="eyebrow">${esc(s.title)}</div>`);
+    s.items.forEach(i=>{
+      const a = r.answers[i.id] || {};
+      rows.push(`<div class="q"><label class="qt">${esc(i.text)}</label>${answerHtml(i,a)}</div>`);
+    });
+  });
+  return crumb('Records',"go('records')", r.ref) + `<main>
+    <div class="banner">
+      <b>${esc(r.title)}</b>
+      ${esc(r.site.name||'No site recorded')}<br>
+      Completed ${uk(r.at)} by ${esc(r.by)}<br>
+      <span style="font-family:var(--mono);font-size:11px">${esc(r.ref)}</span>
+    </div>
+    <button class="btn primary" onclick="makePDF()">Download PDF</button>
+    ${PAIR[r.formId] ? `<button class="btn ghost" onclick="combinedRAMS()">Download combined RAMS (PDF)</button>` : ''}
+    <div style="height:14px"></div>
+    ${rows.join('')}
+    <div style="height:8px"></div>
+  </main>
+  <div class="actionbar"><div class="inner">
+    <button class="btn primary" onclick="makePDF()">Download PDF</button>
+    ${PAIR[state.record.formId] ? `<button class="btn ghost" onclick="combinedRAMS()">Download combined RAMS</button>` : ''}
+    <button class="btn ghost" onclick="sharePDF()">Share / email PDF</button>
+    <button class="btn danger" onclick="deleteRecord()">Delete record</button>
+  </div></div>`;
+}
+function answerHtml(i,a){
+  if(i.type==='check'){
+    const m = {pass:['go','Pass'],fail:['stop','Fail'],na:['grey','N/A']}[a.v] || ['grey','Not answered'];
+    return `<div style="margin-top:8px"><span class="pill ${m[0]}">${m[1]}</span>${a.note?`<p class="guide" style="margin-top:8px">${esc(a.note)}</p>`:''}</div>`;
+  }
+  if(i.type==='file'){
+    const f = a.file;
+    return f ? `<div class="attach" style="margin-top:8px">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M14 3v5h5"/><path d="M6 3h9l5 5v13H6z"/></svg>
+        <span class="txt"><b>${esc(f.name)}</b><small>${fileSize(f.size)}</small></span>
+        <button onclick="downloadAttachment('${state.record.id}','${i.id}')" aria-label="Download">&darr;</button>
+      </div>` : '<small style="color:var(--ink-soft)">No file attached</small>';
+  }
+  if(i.type==='photo') return `<div class="thumbs">${(a.photos||[]).map(p=>`<figure><img src="${p}" alt=""></figure>`).join('') || '<small style="color:var(--ink-soft)">No photos</small>'}</div>`;
+  if(i.type==='risk'){
+    const v = a.v || {l:1,s:1,score:1}; const b = riskBand(v.score||1);
+    return `<div style="margin-top:8px"><span class="pill" style="background:${b.c}">${b.l} · ${v.score||1} (L${v.l}×S${v.s})</span></div>`;
+  }
+  if(i.type==='repeat'){
+    return (a.rows||[]).map((row,n)=>`<div class="rep"><h4>${esc(i.rowLabel||'Item')} ${n+1}</h4>
+      ${i.columns.map(c=>{
+        if(c.type==='risk'){ const v=row[c.id]||{}; const b=riskBand(v.score||1);
+          return `<p style="margin:4px 0"><b>${esc(c.label)}:</b> <span class="pill" style="background:${b.c}">${b.l} · ${v.score||1}</span></p>`; }
+        if(c.type==='sign'){ return row[c.id]
+          ? `<p style="margin:4px 0"><b>${esc(c.label)}:</b></p><img src="${row[c.id]}" alt="Signature" style="height:46px;background:#fff;border:1px solid var(--line);border-radius:3px;padding:2px">`
+          : `<p style="margin:4px 0"><b>${esc(c.label)}:</b> Not signed</p>`; }
+        return `<p style="margin:4px 0"><b>${esc(c.label)}:</b> ${esc(row[c.id]||'—')}</p>`;
+      }).join('')}</div>`).join('') || '<small style="color:var(--ink-soft)">None recorded</small>';
+  }
+  return `<p style="margin:8px 0 0">${esc(a.v||'—')}</p>`;
+}
+
+async function deleteRecord(){
+  if(!confirm('Delete this record? It cannot be recovered.')) return;
+  state.records = state.records.filter(r=>r.id!==state.record.id);
+  await DB.putRecords(state.records);
+  go('records'); toast('Record deleted');
+}
+
+/* ---- PDF ------------------------------------------------------------------
+   A real PDF file, built on the device by pdf.js. No print dialogue, no
+   network. Risk assessments come out landscape so the hazard table fits.   */
+function makePDF(){
+  const r = state.record, f = FORMS.find(x => x.id === r.formId);
+  try {
+    PDF.download(r, f);
+    toast('PDF saved to your downloads');
+  } catch(e){
+    console.error(e);
+    toast('Could not build the PDF');
+  }
+}
+
+/* --- combined risk assessment + method statement -------------------------
+   Issued as one document, the way a RAMS normally is. Offered from either
+   half of the pair; the counterpart is picked from the same project.     */
+const PAIR = { ra01:'ms01', ms01:'ra01' };
+const PAIR_NAME = { ra01:'method statement', ms01:'risk assessment' };
+
+function counterparts(rec){
+  const want = PAIR[rec.formId];
+  return state.records.filter(r => r.formId === want && r.projectId === rec.projectId);
+}
+/* Always ask which counterpart to combine with — with several risk
+   assessments and several method statements on a project, guessing would
+   quietly produce the wrong document. More than one can be selected.   */
+function combinedRAMS(){
+  const rec = state.record;
+  const list = counterparts(rec).slice().sort((a,b) => new Date(b.at) - new Date(a.at));
+  if (!list.length){
+    toast(`No ${PAIR_NAME[rec.formId]} recorded for this project yet`);
+    return;
+  }
+  const thisTask = rec.title;
+  openSheet(`Combine with which ${PAIR_NAME[rec.formId]}?`,
+    `<p class="sheetnote">Combining <b>${esc(thisTask)}</b> (${esc(rec.ref)}).
+       Tick one or more — they will be added in the order shown, risk assessment first.</p>
+     ${list.map((r,i) => `
+       <label class="pick">
+         <input type="checkbox" class="pickbox" value="${r.id}"${list.length===1?' checked':''}>
+         <span class="txt"><b>${esc(r.title)}</b>
+           <small>${esc(r.ref)} &middot; ${uk(r.at)} &middot; ${esc(r.by)}</small></span>
+       </label>`).join('')}
+     <button class="btn go" onclick="combineSelected()">Download combined RAMS</button>`);
+}
+
+function combineSelected(){
+  const rec = state.record;
+  const ids = [...document.querySelectorAll('.pickbox:checked')].map(b => b.value);
+  if (!ids.length){ toast('Tick at least one'); return; }
+
+  const chosen = ids.map(id => state.records.find(r => r.id === id)).filter(Boolean);
+  // risk assessments always lead, method statements follow
+  const ras = rec.formId === 'ra01' ? [rec, ...chosen.filter(r => r.formId === 'ra01')]
+                                    : chosen.filter(r => r.formId === 'ra01');
+  const mss = rec.formId === 'ms01' ? [...chosen.filter(r => r.formId === 'ms01'), rec]
+                                    : chosen.filter(r => r.formId === 'ms01');
+  const ordered = [...ras, ...mss];
+
+  if (typeof PDF.downloadCombined !== 'function'){
+    toast('Close the app fully and reopen to finish updating');
+    closeSheet(); return;
+  }
+  const parts = ordered.map(r => ({ rec:r, form: FORMS.find(f => f.id === r.formId) }));
+  const label = `RAMS · ${(rec.site && rec.site.ref) || (rec.site && rec.site.name) || ''}`.trim();
+  const task = ansOf(rec,'a1') || rec.title;
+  const name = `${(rec.site&&rec.site.ref)||'RAMS'} RAMS - ${task}`
+                 .replace(/[^\w\-. ]+/g,'').slice(0,90) + '.pdf';
+  try {
+    PDF.downloadCombined(parts, label, name);
+    toast(`${ordered.length} documents combined`);
+  } catch(e){ console.error(e); toast('Could not build the combined PDF — see console'); }
+  closeSheet();
+}
+
+/* --- a simple bottom sheet, for choosing between records ---------------- */
+function openSheet(title, inner){
+  const el = document.createElement('div');
+  el.className = 'sheetwrap'; el.id = 'sheetwrap';
+  el.innerHTML = `<div class="sheetbg" onclick="closeSheet()"></div>
+    <div class="sheetbox" role="dialog" aria-modal="true">
+      <h3>${esc(title)}</h3>${inner}
+      <button class="btn ghost" onclick="closeSheet()">Cancel</button>
+    </div>`;
+  document.body.appendChild(el);
+}
+function closeSheet(){ const el = document.getElementById('sheetwrap'); if (el) el.remove(); }
+
+/* Share sheet on a phone: attaches the actual PDF to an email, WhatsApp,
+   AirDrop and so on. Falls back to downloading it on a laptop. */
+async function sharePDF(){
+  const r = state.record, f = FORMS.find(x => x.id === r.formId);
+  try {
+    const file = new File([PDF.blob(r, f)], PDF.filename(r), { type:'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files:[file] })){
+      await navigator.share({ files:[file], title: r.title, text: `${r.title} — ${r.ref}` });
+      return;
+    }
+    PDF.download(r, f);
+    const body = [r.title, r.ref, '',
+      'Project: ' + ((r.site && r.site.name) || '—'),
+      'Completed: ' + uk(r.at) + ' by ' + r.by,
+      'Items failed: ' + r.fails, '',
+      'The PDF has been downloaded — please attach it to this email.'].join('\n');
+    location.href = `mailto:?subject=${encodeURIComponent(r.title + ' — ' + r.ref)}&body=${encodeURIComponent(body)}`;
+  } catch(e){
+    if (e && e.name === 'AbortError') return;      // user dismissed the share sheet
+    console.error(e); toast('Could not share the PDF');
+  }
+}
+
+async function exportAll(){
+  const blob = new Blob([JSON.stringify({exported:new Date().toISOString(), site:state.site, records:state.records}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `wrm-sitecheck-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  toast('Backup file downloaded');
+}
+
+/* ---- site details ---- */
+function viewSite(){
+  const isNew = state.editing === 'new';
+  const s = isNew ? { ref: nextProjectRef() } : (state.site || {});
+  const fld = (k,l,ph) => `<div class="q"><label class="qt" for="s_${k}">${l}</label>
+    <input type="text" id="s_${k}" value="${esc(s[k]||'')}" placeholder="${ph}"></div>`;
+  const back = isNew ? "go('projects')" : "go('home')";
+  return crumb(isNew?'Projects':'Home', back, isNew?'New project':'Site details') + `<main>
+    <div class="banner"><b>${isNew?'New project':'Set once, used everywhere'}</b>These details print at the top of every form completed on this project.</div>
+    <div class="eyebrow">Project</div>
+    ${fld('name','Project / site name','e.g. Elliott Street redevelopment')}
+    <div class="q"><label class="qt" for="s_ref">Project reference</label>
+      <p class="guide">${isNew ? 'Next available number, generated automatically. You can change it if you need to.'
+                               : 'Changing this will not affect records already completed under the old reference.'}</p>
+      <input type="text" id="s_ref" value="${esc(s.ref||'')}" placeholder="${REF_PREFIX}-001-${new Date().getFullYear()}">
+      ${isNew ? `<button class="btn ghost" style="padding:10px;margin-top:10px;font-size:12px"
+                   onclick="document.getElementById('s_ref').value=nextProjectRef()">Reset to next available</button>` : ''}
+    </div>
+    ${fld('address','Site address','Street, town, postcode')}
+    ${fld('client','Client','Client organisation')}
+
+  </main>
+  <div class="actionbar"><div class="inner">
+    <button class="btn go" onclick="saveSite()">${isNew?'Create project':'Save site details'}</button>
+    ${isNew?'':`<button class="btn ghost" onclick="go('projects')">Switch project</button>`}
+  </div></div>`;
+}
+async function saveSite(){
+  const vals = {};
+  ['name','ref','address','client'].forEach(k => vals[k] = $('#s_'+k).value.trim());
+  if(!vals.name){ toast('Give the project a name'); $('#s_name').focus(); return; }
+
+  if (refInUse(vals.ref, state.editing === 'new' ? null : (state.site||{}).id)){
+    toast('That reference is already in use');
+    $('#s_ref').focus(); return;
+  }
+
+  if (state.editing === 'new' && !CLOUD.canMakeProjects()){
+    toast('Only managers and superusers can create projects'); return;
+  }
+
+  if(state.editing === 'new'){
+    if (!vals.ref) vals.ref = nextProjectRef();
+    vals.id = crypto.randomUUID();
+    vals.ownerId = state.profile && state.profile.id;
+    state.projects.unshift(vals);
+    state.site = vals;
+    await set('current', vals.id);
+    toast('Project created');
+  } else {
+    Object.assign(state.site, vals);
+    toast('Site details saved');
+  }
+  const res = await CLOUD.saveProject(state.site);
+  if (res.queued) toast('Saved on this device — will sync when back online');
+  // remember the highest number ever issued, so deleting a project never frees it
+  const m = String(vals.ref||'').match(new RegExp('^' + REF_PREFIX + '-(\\d+)-\\d{4}$','i'));
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n > (state.refseq||0)){ state.refseq = n; await set('refseq', n); }
+  }
+  state.editing = null;
+  await set('projects', state.projects);
+  go('home');
+}
+
+boot();
+</script>
+
+</html>
