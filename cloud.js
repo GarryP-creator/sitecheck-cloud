@@ -145,16 +145,28 @@ const CLOUD = (() => {
     const { data, error } = await c.from('records')
       .select('*').order('signed_at', { ascending: false }).limit(500);
     if (error) throw error;
-    const list = (data || []).map(rowToRecord);
+    // A record made on this device carries a copy of its project, because the
+    // PDF masthead and the record screen both need the name, reference and
+    // address. One arriving from the server has to be given the same, or it
+    // opens to a crash — which is exactly what happened the first time a
+    // record written on another device was opened here.
+    const projects = await DB.get('projects') || [];
+    const byId = Object.fromEntries(projects.map(p => [p.id, p]));
+    const list = (data || []).map(row => rowToRecord(row, byId[row.project_id]));
     await DB.putRecords(list);
     return list;
   }
 
-  const rowToRecord = r => ({
+  const rowToRecord = (r, project) => ({
     id: r.id, ref: r.ref, formId: r.form_id, code: r.code, title: r.title,
     at: r.signed_at || r.created_at, by: r.signed_by || '', fails: r.fails || 0,
     projectId: r.project_id, answers: r.answers || {}, sig: r.signature || '',
     createdBy: r.created_by, synced: 1,
+    site: project
+      ? { id: project.id, ref: project.ref, name: project.name,
+          address: project.address || '', client: project.client || '' }
+      : { ref: '', name: '', address: '', client: '' },
+    via: r.submitted_via || null, viaName: r.submitted_name || null,
   });
 
   /* --- the outbox --------------------------------------------------------- */

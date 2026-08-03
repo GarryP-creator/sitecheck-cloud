@@ -134,8 +134,8 @@ const PDF = (() => {
     details(){
       const r = this.rec;
       const pairs = [
-        ['Project', r.site.name], ['Reference', r.site.ref],
-        ['Site address', r.site.address], ['Client', r.site.client],
+        ['Project', (r.site && r.site.name) || ''], ['Reference', (r.site && r.site.ref) || ''],
+        ['Site address', (r.site && r.site.address) || ''], ['Client', (r.site && r.site.client) || ''],
         ['Completed by', r.by], ['Date & time', fmt(r.at)],
       ];
       const colW = this.CW / 2 - 4;
