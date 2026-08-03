@@ -252,6 +252,19 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
 
 /* photos + signature */
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.folder{border:1px solid var(--line);border-radius:4px;background:var(--plate);
+  margin-bottom:10px;overflow:hidden;box-shadow:var(--shadow)}
+.folderhead{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:15px 14px}
+.folderhead:active{background:#F1EFEA}
+.folderhead .chev{color:var(--ink-soft);transition:transform .15s ease;flex:0 0 auto}
+.folder.open .folderhead .chev{transform:rotate(90deg)}
+.folder.open .folderhead{border-bottom:1px solid var(--line)}
+.folderhead .fold{color:var(--duty);flex:0 0 auto}
+.folderhead .name{flex:1;font-size:15px;font-weight:700;min-width:0}
+.folderhead .count{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink-soft);
+  background:var(--concrete);border:1px solid var(--line);border-radius:11px;padding:3px 9px}
+.folderbody{padding:12px 12px 4px}
+.folderbody .row{margin-bottom:8px}
 .attach{display:flex;align-items:center;gap:11px;background:#fff;border:2px solid var(--line);
   border-radius:3px;padding:11px 12px;margin-top:10px}
 .attach svg{color:var(--duty);flex:0 0 auto}
@@ -2358,34 +2371,76 @@ async function saveShares(){
 }
 
 /* ---- documents ------------------------------------------------------------ */
+/* The five standard folders are offered first so filing stays consistent,
+   but anything already in use is offered too, and a new one can be made. */
 const FOLDERS = ['Toolbox talks','RAMS','Inspections','Accidents','Project documents'];
+
+function allFolders(){
+  const used = [...new Set((state.docs||[]).map(d => d.folder).filter(Boolean))];
+  return [...FOLDERS, ...used.filter(f => !FOLDERS.includes(f))];
+}
 
 function viewDocs(){
   const list = state.docs || [];
-  const byFolder = FOLDERS.map(f => [f, list.filter(d => d.folder === f)]);
+  const folders = allFolders().map(f => [f, list.filter(d => d.folder === f)])
+                              .filter(([f, docs]) => docs.length);
+  const open = state.openFolders || (state.openFolders = new Set());
+
   return crumb('Home',"go('home')",'Documents') + `<main>
     <div class="banner"><b>${esc((state.site||{}).name||'No project')}</b>
-      Signed PDFs are filed here automatically. You can also upload anything the
-      site needs to hand — the construction phase plan, the asbestos register, drawings.</div>
+      Signed PDFs are filed here automatically. You can also upload anything the site needs
+      to hand — the construction phase plan, the asbestos register, drawings.</div>
+
     <div class="eyebrow">Upload</div>
     <div class="q">
-      <label class="qt">Add a document</label>
-      <select id="d_folder">${FOLDERS.map(f=>`<option${f==='Project documents'?' selected':''}>${f}</option>`).join('')}</select>
+      <label class="qt" for="d_folder">Add a document</label>
+      <select id="d_folder" onchange="folderChanged()">
+        ${allFolders().map(f=>`<option${f==='Project documents'?' selected':''}>${esc(f)}</option>`).join('')}
+        <option value="__new">Other — make a new folder…</option>
+      </select>
+      <div id="d_newwrap" style="display:none">
+        <input type="text" id="d_newname" placeholder="Name the new folder, e.g. Permits" maxlength="60">
+      </div>
       <input type="file" id="d_file" style="margin-top:10px">
       <button class="btn ghost" style="padding:12px;margin-top:10px" onclick="uploadDoc()">Upload</button>
     </div>
-    ${byFolder.map(([f, docs]) => docs.length ? `
-      <div class="eyebrow">${esc(f)} &middot; ${docs.length}</div>
-      ${docs.map(d => `
-        <div class="row">
-          <button class="tap" onclick="openDoc('${d.id}')">
-            <span class="txt"><b>${esc(d.name)}</b>
-              <small>${uk(d.uploaded_at)}${d.size_bytes?' · '+fileSize(d.size_bytes):''}</small></span>
-          </button>
-          <button class="mini" onclick="openDoc('${d.id}')">OPEN</button>
-        </div>`).join('')}` : '').join('')}
+
+    ${folders.length ? `<div class="eyebrow">Filed &middot; ${list.length}</div>` : ''}
+    ${folders.map(([f, docs]) => `
+      <div class="folder ${open.has(f)?'open':''}">
+        <button class="folderhead" onclick="toggleFolder('${esc(f).replace(/'/g,"\\'")}')">
+          <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M9 6l6 6-6 6"/></svg>
+          <svg class="fold" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span class="name">${esc(f)}</span>
+          <span class="count">${docs.length}</span>
+        </button>
+        ${open.has(f) ? `<div class="folderbody">${docs.map(d => `
+          <div class="row">
+            <button class="tap" onclick="openDoc('${d.id}')">
+              <span class="txt"><b>${esc(d.name)}</b>
+                <small>${uk(d.uploaded_at)}${d.size_bytes?' · '+fileSize(d.size_bytes):''}</small></span>
+            </button>
+            <button class="mini" onclick="openDoc('${d.id}')">OPEN</button>
+          </div>`).join('')}</div>` : ''}
+      </div>`).join('')}
+
     ${list.length ? '' : '<div class="empty"><b>Nothing filed yet</b>Complete a form or upload a document.</div>'}
   </main>`;
+}
+
+function toggleFolder(name){
+  const open = state.openFolders || (state.openFolders = new Set());
+  open.has(name) ? open.delete(name) : open.add(name);
+  render();
+}
+
+function folderChanged(){
+  const sel = document.getElementById('d_folder');
+  const wrap = document.getElementById('d_newwrap');
+  const isNew = sel.value === '__new';
+  wrap.style.display = isNew ? 'block' : 'none';
+  if (isNew) document.getElementById('d_newname').focus();
 }
 
 async function openDocs(){
@@ -2397,14 +2452,21 @@ async function openDocs(){
 
 async function uploadDoc(){
   const f = document.getElementById('d_file').files[0];
-  const folder = document.getElementById('d_folder').value;
+  const sel = document.getElementById('d_folder');
+  let folder = sel.value;
+  if (folder === '__new'){
+    folder = (document.getElementById('d_newname').value || '').trim();
+    if (!folder){ toast('Name the new folder first'); document.getElementById('d_newname').focus(); return; }
+    if (folder.length > 60){ toast('That folder name is too long'); return; }
+  }
   if (!f){ toast('Choose a file first'); return; }
   if (f.size > 15 * 1024 * 1024){ toast('That file is over 15MB'); return; }
   toast('Uploading…');
   try {
     await CLOUD.uploadDocument(state.site.id, folder, f);
     state.docs = await CLOUD.listDocuments(state.site.id);
-    render(); toast('Uploaded');
+    (state.openFolders || (state.openFolders = new Set())).add(folder);  // show where it went
+    render(); toast('Uploaded to ' + folder);
   } catch(e){ console.error(e); toast(e.message || 'Upload failed'); }
 }
 
