@@ -357,6 +357,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
   font-size:13px;margin-bottom:16px;
 }
 .banner b{display:block;margin-bottom:3px}
+.banner.warn{background:#FDF0DC;border-color:var(--warn)}
 .sheetwrap{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center}
 .sheetbg{position:absolute;inset:0;background:rgba(20,23,26,.55)}
 .sheetbox{position:relative;background:var(--concrete);width:100%;max-width:600px;
@@ -2242,7 +2243,8 @@ function viewUsers(){
     <button class="row" onclick="editUser('${u.id}')">
       <span class="code">${esc((u.role||'site').slice(0,5).toUpperCase())}</span>
       <span class="txt"><b>${esc(u.user_id)}</b>
-        <small>${esc(u.full_name||'')}${u.email?' · '+esc(u.email):''}</small></span>
+        <small>${esc(u.full_name||'')}${u.email?' · '+esc(u.email):''}${
+          u.email && !u.welcome_sent_at ? ' · no welcome sent' : ''}</small></span>
       <span class="pill ${u.active?'go':'grey'}">${u.active?'ACTIVE':'OFF'}</span>
     </button>`).join('');
   return crumb('Projects',"go('projects')",'People') + `<main>
@@ -2253,6 +2255,8 @@ function viewUsers(){
     ${rows || '<div class="empty"><b>No profiles yet</b></div>'}
     <div class="eyebrow">Add</div>
     <button class="btn primary" onclick="newUser()">+ Add a person</button>
+    <div class="eyebrow">Settings</div>
+    <button class="btn ghost" onclick="openEmailSettings()">Welcome email wording</button>
   </main>`;
 }
 
@@ -2301,6 +2305,15 @@ function userForm(u){
       <p class="guide">Deactivating keeps their name on everything they signed. Accounts are never deleted.</p>
       </div>` : ''}
 
+    <div class="q"><label class="qt">Welcome email</label>
+      <p class="guide">${isNew
+        ? 'Sent to the address above, with their User ID and PIN. Needs an email address.'
+        : 'Sending it again also sets the PIN above as their new one — their current PIN is stored scrambled and cannot be read back, so there is nothing to remind them of. Leave the PIN blank and nothing is sent.'}</p>
+      <select id="u_welcome">
+        <option value="0"${isNew?'':' selected'}>Do not send</option>
+        <option value="1"${isNew?' selected':''}>${isNew?'Send it now':'Send it again with the new PIN'}</option>
+      </select></div>
+
     <button class="btn go" id="u_save" onclick="saveUser(${isNew?'null':`'${u.id}'`})">
       ${isNew?'Create account':'Save changes'}</button>`);
 }
@@ -2322,13 +2335,25 @@ async function saveUser(existingId){
 
   if (btn){ btn.disabled = true; btn.textContent = 'Working…'; }
   try {
+    const wantsWelcome = ((document.getElementById('u_welcome')||{}).value === '1') && !!email;
+
     if (!existingId){
-      await CLOUD.createUser(userId, pin, name, email, role);
+      const res = await CLOUD.createUser(userId, pin, name, email, role, wantsWelcome);
+      // The account is made either way. Whether the email got out is a separate
+      // question, and the screen says which — so nobody assumes it arrived.
+      const mail = (res && res.mail) || { sent:false };
+      const note = !wantsWelcome
+        ? 'No welcome email was sent. Give these to them yourself.'
+        : mail.sent
+          ? 'A welcome email has been sent to ' + esc(email) + '. Keep these anyway — the PIN is not shown again.'
+          : 'The account works, but the welcome email did not go: ' + esc(String(mail.error||'unknown reason')) +
+            ' Give these to them yourself.';
       closeSheet();
       openSheet('Account created', `
         <p class="sheetnote">Give these to <b>${esc(name)}</b>. The PIN is not shown again.</p>
         <div class="creds"><span>User ID</span><b>${esc(userId)}</b></div>
         <div class="creds"><span>PIN</span><b>${esc(pin)}</b></div>
+        <p class="sheetnote">${note}</p>
         <p class="sheetnote">They sign in at the same address as you. Share a project with
           them and it will appear on their device.</p>
         <button class="btn go" onclick="closeSheet()">Done</button>`);
@@ -2336,9 +2361,19 @@ async function saveUser(existingId){
       await CLOUD.saveProfile({ id: existingId, user_id: userId, full_name: name,
         email: email || null, role,
         active: activeBox ? activeBox.value === '1' : true });
-      if (pin) await CLOUD.setPin(existingId, userId, pin);
-      closeSheet();
-      toast(pin ? 'Saved — new PIN set' : 'Saved');
+
+      // Sending the welcome again sets the PIN as part of the same call, so it
+      // must not also be set separately — that would leave two different PINs
+      // in play depending on which finished last.
+      if (wantsWelcome && pin){
+        await CLOUD.sendWelcome(existingId, userId, pin);
+        closeSheet();
+        toast('Saved — new PIN set and emailed');
+      } else {
+        if (pin) await CLOUD.setPin(existingId, userId, pin);
+        closeSheet();
+        toast(pin ? 'Saved — new PIN set' : 'Saved');
+      }
     }
     state.users = await CLOUD.listUsers();
     render();
@@ -2350,6 +2385,120 @@ async function saveUser(existingId){
       : msg.slice(0, 110));
     if (btn){ btn.disabled = false; btn.textContent = existingId ? 'Save changes' : 'Create account'; }
   }
+}
+
+/* ---- welcome email wording (superuser) -----------------------------------
+   The message that goes out when an account is made. It is kept in the
+   database rather than in this file, so the wording can be changed without a
+   deploy. This copy of the default exists only for the reset button — if it
+   is changed here, change it in admin-users.ts and sitecheck-email.sql too. */
+const DEFAULT_WELCOME_SUBJECT = 'Your SiteCheck login';
+const DEFAULT_WELCOME_BODY = [
+  'Hello [name],',
+  '',
+  "You have been set up with an account on SiteCheck, WRM's site compliance app.",
+  '',
+  'It holds the site checklists, toolbox talks, risk assessments and incident reports, and lets you sign them off on site.',
+  '',
+  'Open it here: [link]',
+  '',
+  '*Your details*',
+  'User ID: *[userid]*',
+  'PIN: *[pin]*',
+  '',
+  'Enter your User ID, then your five-digit PIN. Five wrong attempts will lock you out for a short time.',
+  '',
+  '*Put it on your phone*',
+  'On iPhone, open the link in Safari, tap Share, then Add to Home Screen.',
+  'On Android, open the link in Chrome, tap the menu, then Install app.',
+  'It then sits alongside your other apps and opens straight to the keypad.',
+  '',
+  'Keep your PIN to yourself. Anything you sign carries your name and cannot be altered afterwards.',
+  '',
+  'Any problems, speak to Garry Pougher (garry@workplace-rm.com).',
+  '',
+  'Kind regards,',
+  '*WRM* · Workplace Risk Management Ltd',
+  'SiteCheck — the whole site, in your pocket',
+].join('\n');
+
+async function openEmailSettings(){
+  let s, ready = false, mine = null;
+  try {
+    const res = await CLOUD.getEmailSettings();
+    s = res.settings; ready = !!res.emailReady; mine = res.yourEmail;
+  } catch(e){ toast(String(e.message||e).slice(0,110)); return; }
+
+  openSheet('Welcome email', `
+    ${ready ? '' : `<div class="banner warn"><b>No email service connected yet</b>
+      You can write and save the wording now, but nothing will be sent until the
+      key is added in Supabase. Ask whoever set this up.</div>`}
+
+    <div class="q"><label class="qt">Subject</label>
+      <input type="text" id="w_subject" value="${esc(s.welcome_subject)}"></div>
+
+    <div class="q"><label class="qt">Message</label>
+      <p class="guide">These are filled in for each person:
+        <b>[name]</b> their first name · <b>[userid]</b> their User ID ·
+        <b>[pin]</b> their PIN · <b>[link]</b> the app address.<br>
+        A blank line starts a new paragraph. Text between *stars* comes out bold.</p>
+      <textarea id="w_body" rows="18" style="font-size:13px;line-height:1.5">${esc(s.welcome_body)}</textarea></div>
+
+    <div class="q"><label class="qt">From</label>
+      <p class="guide">Must be an address on a domain verified with the email service, or it will be refused.</p>
+      <input type="text" id="w_from" value="${esc(s.welcome_from)}"></div>
+
+    <div class="q"><label class="qt">Link to the app</label>
+      <input type="text" id="w_link" value="${esc(s.welcome_link)}"></div>
+
+    <button class="btn go" id="w_save" onclick="saveWelcomeEmail()">Save wording</button>
+    <button class="btn ghost" onclick="testWelcomeEmail()">Send a test to ${mine ? esc(mine) : 'me'}</button>
+    <button class="btn ghost" onclick="resetWelcomeEmail()">Reset to the default wording</button>
+    <p class="sheetnote">Every change is recorded in the audit log.</p>`);
+}
+
+function welcomeFields(){
+  const v = id => (document.getElementById(id)||{}).value || '';
+  return { welcome_subject: v('w_subject').trim(), welcome_body: v('w_body'),
+           welcome_from: v('w_from').trim(), welcome_link: v('w_link').trim() };
+}
+
+async function saveWelcomeEmail(){
+  const f = welcomeFields();
+  if (!f.welcome_subject){ toast('The subject cannot be empty'); return; }
+  if (!f.welcome_body.trim()){ toast('The message cannot be empty'); return; }
+
+  // A missing marker is not always a mistake — dropping [pin] is a reasonable
+  // choice if PINs are given out face to face — so this asks rather than
+  // refuses. What it will not do is let one go missing unnoticed.
+  const missing = ['[name]','[userid]','[pin]','[link]'].filter(k => f.welcome_body.indexOf(k) < 0);
+  if (missing.length &&
+      !confirm('The message does not use ' + missing.join(', ') +
+               '.\n\nThat is fine if you meant it. Save anyway?')) return;
+
+  const btn = document.getElementById('w_save');
+  if (btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
+  try { await CLOUD.saveEmailSettings(f); closeSheet(); toast('Wording saved'); }
+  catch(e){
+    toast(String(e.message||e).slice(0,110));
+    if (btn){ btn.disabled = false; btn.textContent = 'Save wording'; }
+  }
+}
+
+/* Sends what is on screen, saved or not, with obviously fake details in it.
+   Seeing it in an inbox catches things that reading it in a box does not. */
+async function testWelcomeEmail(){
+  toast('Sending test…');
+  try { const r = await CLOUD.testEmail(welcomeFields()); toast('Test sent to ' + (r.to||'you')); }
+  catch(e){ toast(String(e.message||e).slice(0,140)); }
+}
+
+function resetWelcomeEmail(){
+  if (!confirm('Put the original wording back? Anything you have written here will be lost.')) return;
+  const set = (id,v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('w_subject', DEFAULT_WELCOME_SUBJECT);
+  set('w_body', DEFAULT_WELCOME_BODY);
+  toast('Default wording restored — Save to keep it');
 }
 
 /* ---- sharing a project --------------------------------------------------- */

@@ -245,10 +245,19 @@ const CLOUD = (() => {
     return data;
   }
 
-  const createUser  = (userId, pin, fullName, email, role) =>
-    callAdmin({ action:'create', userId, pin, fullName, email, role });
+  const createUser  = (userId, pin, fullName, email, role, sendWelcome) =>
+    callAdmin({ action:'create', userId, pin, fullName, email, role, sendWelcome:!!sendWelcome });
   const setPin      = (id, userId, pin) => callAdmin({ action:'setpin', id, userId, pin });
   const setActive   = (id, active)      => callAdmin({ action:'setactive', id, active });
+
+  /* --- welcome email ------------------------------------------------------
+     The wording lives in the database, not in this file, so it can be changed
+     from inside the app without a deploy. Everything here just carries it
+     back and forth. */
+  const getEmailSettings  = ()          => callAdmin({ action:'settings' });
+  const saveEmailSettings = (s)         => callAdmin({ action:'savesettings', ...s });
+  const testEmail         = (s)         => callAdmin({ action:'testmail', ...s });
+  const sendWelcome       = (id, userId, pin) => callAdmin({ action:'welcome', id, userId, pin });
 
   async function saveProfile(p){
     const c = client(); if (!c) throw new Error('offline');
@@ -353,6 +362,7 @@ const CLOUD = (() => {
     pullProjects, saveProject, pushRecord, pullRecords, flush,
     startLive, stopLive,
     listUsers, saveProfile, createUser, setPin, setActive,
+    getEmailSettings, saveEmailSettings, testEmail, sendWelcome,
     listShares, share, unshare,
     uploadDocument, listDocuments, documentUrl, deleteDocument, moveDocument,
     auditFor, deviceId, online,
