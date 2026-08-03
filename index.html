@@ -1112,7 +1112,12 @@ function tiles(){
     </div>`;
 }
 
-function go(v){ state.view=v; render(); }
+function go(v){
+  // The pack picker edits a draft that only becomes real on Save. Leaving the
+  // screen without saving must not carry it to the next project.
+  if (state.view === 'site' && v !== 'site') state.packDraft = null;
+  state.view=v; render();
+}
 function openList(cat){ state.filter=cat; state.view='list'; render(); }
 
 /* ---- form list ---- */
@@ -2161,6 +2166,11 @@ function personForm(contractorId){
   const d = new Date(); d.setDate(d.getDate() + 21);
   openSheet('Add a person', `
     <p class="sheetnote">They get a link and a QR code. No account, no password.</p>
+    ${((state.site||{}).inductionDocs||[]).length
+      ? `<p class="sheetnote">Pack: <b>${esc(((state.site||{}).inductionDocs||[]).map(d=>d.name).join(', '))}</b>
+           &mdash; they must open it and confirm before signing.</p>`
+      : `<p class="sheetnote">No induction pack set for this project. Set one under
+           Site details if you want them to read a document first.</p>`}
     <div class="q"><label class="qt">Their name</label>
       <input type="text" id="p_name" placeholder="Dave Whitfield"></div>
     <div class="q"><label class="qt">Their email (optional)</label>
@@ -2232,6 +2242,7 @@ function showLink(id){
       onclick="this.select()" style="font-size:12px"></div>
     <button class="btn go" onclick="copyLink()">Copy the link</button>
     <div id="qrbox" style="text-align:center;padding:14px 0"></div>
+    <button class="btn ghost" onclick="downloadQR('${esc(i.person_name)}')">Save the QR code as an image</button>
     <p class="sheetnote">Point a phone camera at the code above and it opens the induction.
       Expires ${new Date(i.expires_at).toLocaleDateString('en-GB')}.</p>
     <button class="btn ghost" onclick="closeSheet()">Done</button>`);
@@ -2308,6 +2319,94 @@ async function openRecordById(id){
   const found = (state.records||[]).find(r => r.id === id);
   if (found){ state.record = found; go('record'); }
   else toast('That record has not reached this device yet');
+}
+
+/* ---- the induction pack ---------------------------------------------------
+   Documents already in this project that a visitor must open and confirm they
+   have read. Both the id and the name are kept: if a document is renamed or
+   removed later, what was sent still reads sensibly, and a record signed
+   against the old one still says what it was. */
+function packDocs(s){
+  return state.packDraft || (s && s.inductionDocs) || [];
+}
+function packRows(s){
+  const d = packDocs(s);
+  if (!d.length) return '<p class="guide" style="margin:0">Nothing chosen — visitors will just see the notes below.</p>';
+  return d.map(x => `<div class="creds"><span>${esc(x.name)}</span>
+    <button class="btn ghost" style="padding:4px 10px;font-size:11px;margin:0;width:auto"
+            onclick="dropPackDoc('${x.id}')">Remove</button></div>`).join('');
+}
+function repaintPack(){
+  const el = document.getElementById('packlist');
+  if (el) el.innerHTML = packRows(state.site);
+}
+function dropPackDoc(id){
+  state.packDraft = packDocs(state.site).filter(x => x.id !== id);
+  repaintPack();
+}
+
+async function pickPack(){
+  if (!state.site){ toast('Save the project first'); return; }
+  let docs = [];
+  try { docs = await CLOUD.listDocuments(state.site.id); }
+  catch(e){ toast('Could not load the documents'); return; }
+  if (!docs.length){
+    openSheet('No documents yet', `
+      <p class="sheetnote">Upload the induction pack in Documents first, then come back
+        and choose it here.</p>
+      <button class="btn primary" onclick="closeSheet();openDocs()">Go to Documents</button>
+      <button class="btn ghost" onclick="closeSheet()">Cancel</button>`);
+    return;
+  }
+  const chosen = packDocs(state.site).map(x => x.id);
+  openSheet('Choose the induction pack', `
+    <p class="sheetnote">Tick everything a visitor must read before signing.</p>
+    ${docs.map(d => `<label class="creds" style="cursor:pointer">
+      <span>${esc(d.name)}<br><small style="color:var(--ink-soft)">${esc(d.folder||'')}</small></span>
+      <input type="checkbox" value="${d.id}" data-name="${esc(d.name)}"
+             class="packbox"${chosen.includes(d.id)?' checked':''} style="width:22px;height:22px">
+    </label>`).join('')}
+    <button class="btn go" onclick="applyPack()">Use these</button>
+    <button class="btn ghost" onclick="closeSheet()">Cancel</button>`);
+}
+
+function applyPack(){
+  state.packDraft = [...document.querySelectorAll('.packbox')]
+    .filter(b => b.checked)
+    .map(b => ({ id: b.value, name: b.getAttribute('data-name') }));
+  closeSheet(); repaintPack();
+  toast(state.packDraft.length
+    ? state.packDraft.length + ' document' + (state.packDraft.length>1?'s':'') + ' chosen — Save to keep it'
+    : 'Pack cleared — Save to keep it');
+}
+
+/* Turns the QR on screen into a PNG file, so it can be attached to an email or
+   dropped into a document at a sensible size rather than screenshotted. */
+function downloadQR(name){
+  const svg = document.querySelector('#qrbox svg');
+  if (!svg){ toast('No QR code to save'); return; }
+  const px = 900;
+  const blob = new Blob([new XMLSerializer().serializeToString(svg)], {type:'image/svg+xml'});
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = c.height = px;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0,0,px,px);
+    g.drawImage(img, 0, 0, px, px);
+    URL.revokeObjectURL(url);
+    c.toBlob(b => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = 'induction-' + String(name||'link').replace(/[^A-Za-z0-9]+/g,'-').toLowerCase() + '.png';
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+      toast('QR code saved');
+    }, 'image/png');
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); toast('Could not save the QR code'); };
+  img.src = url;
 }
 
 /* ---- sharing a project --------------------------------------------------- */
@@ -2949,6 +3048,8 @@ function viewRecord(){
       Completed ${uk(r.at)} by ${esc(r.by)}<br>
       ${r.via === 'induction_link'
         ? 'Completed before arriving on site, from a one-time link<br>' : ''}
+      ${r.pack && r.pack.docs && r.pack.docs.length
+        ? 'Signed against: ' + esc(r.pack.docs.map(d=>d.name).join(', ')) + '<br>' : ''}
       <span style="font-family:var(--mono);font-size:11px">${esc(r.ref)}</span>
     </div>
     <button class="btn primary" onclick="makePDF()">Download PDF</button>
@@ -3146,6 +3247,23 @@ function viewSite(){
     ${fld('address','Site address','Street, town, postcode')}
     ${fld('client','Client','Client organisation')}
 
+    ${isNew ? '' : `
+    <div class="eyebrow">Pre-arrival induction</div>
+    <div class="banner">What someone sees when you send them an induction link,
+      before they ever set foot on site.</div>
+
+    <div class="q"><label class="qt">Induction pack</label>
+      <p class="guide">Documents they must open and confirm they have read. Upload them
+        to Documents first, then pick them here.</p>
+      <div id="packlist">${packRows(s)}</div>
+      <button class="btn ghost" style="padding:10px;font-size:12px" onclick="pickPack()">
+        Choose documents</button></div>
+
+    <div class="q"><label class="qt">This week on site</label>
+      <p class="guide">Anything that changes too often for the pack — a road closure, a
+        lift on Thursday, a contact number. Shown underneath the documents.</p>
+      <textarea id="s_notes" rows="5" placeholder="Nearest A&amp;E: …&#10;Assembly point: …">${esc(s.inductionNotes||'')}</textarea></div>`}
+
   </main>
   <div class="actionbar"><div class="inner">
     <button class="btn go" onclick="saveSite()">${isNew?'Create project':'Save site details'}</button>
@@ -3155,6 +3273,9 @@ function viewSite(){
 async function saveSite(){
   const vals = {};
   ['name','ref','address','client'].forEach(k => vals[k] = $('#s_'+k).value.trim());
+  const notesBox = $('#s_notes');
+  if (notesBox) vals.inductionNotes = notesBox.value.trim();
+  vals.inductionDocs = state.packDraft || ((state.site||{}).inductionDocs || []);
   if(!vals.name){ toast('Give the project a name'); $('#s_name').focus(); return; }
 
   if (refInUse(vals.ref, state.editing === 'new' ? null : (state.site||{}).id)){

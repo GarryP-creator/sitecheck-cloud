@@ -102,12 +102,16 @@ const CLOUD = (() => {
   const rowToProject = r => ({
     id: r.id, ref: r.ref, name: r.name, address: r.address || '', client: r.client || '',
     ownerId: r.owner_id, updatedAt: r.updated_at,
+    inductionNotes: r.induction_notes || '',
+    inductionDocs: Array.isArray(r.induction_docs) ? r.induction_docs : [],
   });
 
   async function saveProject(p){
     const row = {
       id: p.id, ref: p.ref, name: p.name, address: p.address || null,
       client: p.client || null, owner_id: p.ownerId || (profile && profile.id),
+      induction_notes: p.inductionNotes || null,
+      induction_docs: p.inductionDocs || [],
       updated_at: new Date().toISOString(), updated_by: profile && profile.id,
     };
     const c = client();
@@ -167,6 +171,7 @@ const CLOUD = (() => {
           address: project.address || '', client: project.client || '' }
       : { ref: '', name: '', address: '', client: '' },
     via: r.submitted_via || null, viaName: r.submitted_name || null,
+    pack: r.induction_pack || null,
   });
 
   /* --- the outbox --------------------------------------------------------- */

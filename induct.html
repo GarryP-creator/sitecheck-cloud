@@ -65,6 +65,12 @@ canvas{width:100%;height:170px;background:#fff;border:1px dashed var(--line);bor
 .btn.go{background:var(--go);color:#fff}
 .btn.ghost{background:transparent;border:1.5px solid var(--line)}
 .btn[disabled]{opacity:.5;cursor:default}
+.doc{display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:8px;
+  border:1.5px solid var(--duty);border-radius:4px;text-decoration:none;color:var(--ink);background:#F4F8FD}
+.doc .nm{flex:1;font-weight:600}
+.doc .tag{font-size:10px;letter-spacing:.1em;background:var(--duty);color:#fff;padding:3px 7px;border-radius:3px}
+.tick.locked{opacity:.55}
+.tick.locked .box{border-style:dashed}
 .files{font-size:13px;margin-top:8px}
 .files div{padding:6px 0;border-bottom:1px solid var(--concrete);display:flex;justify-content:space-between;gap:10px}
 .guide{font-size:13px;color:var(--ink-soft);margin:0 0 8px}
@@ -90,6 +96,7 @@ const esc = s => String(s??'').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 let TOKEN = '', INFO = null, ANS = {}, SIG = null, FILES = [];
+let OPENED = [], PACKREAD = false;
 
 function toast(t){
   const el = document.createElement('div');
@@ -145,7 +152,20 @@ function draw(){
       Please read this through, answer the questions and sign at the bottom.
       It takes a few minutes and only needs doing once.</div>`;
 
-  if (p.notes) html += `<h2>Site information</h2><div class="card pack">${esc(p.notes)}</div>`;
+  const pack = INFO.pack || [];
+  if (pack.length){
+    html += `<h2>Read this first</h2>
+      <div class="card">
+        <p class="guide">The site induction pack for this project. Open it and read it
+          through — you will be asked to confirm you have.</p>
+        ${pack.map(d => `<a class="doc" id="d_${esc(d.id)}" href="${esc(d.url)}"
+             target="_blank" rel="noopener" onclick="openedDoc('${esc(d.id)}')">
+             <span>&#128196;</span><span class="nm">${esc(d.name)}</span>
+             <span class="tag" id="dt_${esc(d.id)}">OPEN</span></a>`).join('')}
+      </div>`;
+  }
+
+  if (p.notes) html += `<h2>This week on site</h2><div class="card pack">${esc(p.notes)}</div>`;
 
   if (wantsRams){
     html += `<h2>Risk assessment and method statement</h2>
@@ -177,6 +197,12 @@ function draw(){
 
     html += `<h2>Sign</h2>
       <div class="card">
+        ${pack.length ? `<div class="tick locked" id="packtick" onclick="packConfirm()">
+          <div class="box">&#10003;</div>
+          <span>I have read and understood the site induction pack for this project.
+            <small id="packhint" style="display:block;color:var(--ink-soft)">Open the
+              document above first.</small></span>
+        </div>` : ''}
         <p class="guide">Sign with your finger or mouse.</p>
         <canvas id="pad"></canvas>
         <button class="btn ghost" onclick="clearPad()">Clear signature</button>
@@ -199,6 +225,24 @@ function it_prefill(){
   // otherwise a visitor who does not retype it submits a blank name.
   const f = F06(); if (!f) return;
   if (INFO.person.name) ANS['a1'] = { v: INFO.person.name };
+}
+
+function openedDoc(id){
+  if (!OPENED.includes(id)) OPENED.push(id);
+  const tag = document.getElementById('dt_' + id);
+  if (tag){ tag.textContent = 'OPENED'; tag.style.background = 'var(--go)'; }
+  const all = (INFO.pack || []).every(d => OPENED.includes(d.id));
+  const t = document.getElementById('packtick');
+  const h = document.getElementById('packhint');
+  if (all && t){ t.classList.remove('locked'); if (h) h.remove(); }
+}
+
+// Opening a document is not the same as reading it, and nothing can prove the
+// difference. What this does stop is the person who never opened it at all.
+function packConfirm(){
+  const t = document.getElementById('packtick'); if (!t) return;
+  if (t.classList.contains('locked')){ toast('Open the induction pack first'); return; }
+  PACKREAD = t.classList.toggle('on');
 }
 
 function setV(id, v){ ANS[id] = { v }; }
@@ -270,6 +314,10 @@ async function submit(){
   const name = ($('#signed').value || '').trim();
   if (!name){ toast('Type your name to sign'); return; }
   if (!dirty){ toast('Please sign in the box'); return; }
+  if ((INFO.pack || []).length && !PACKREAD){
+    toast('Please confirm you have read the site induction pack');
+    return;
+  }
 
   // Every confirmation has to be ticked. This is an induction — a half-read
   // one is worth less than none, because it looks like it was done.
@@ -285,7 +333,10 @@ async function submit(){
   const btn = $('#done'); btn.disabled = true; btn.textContent = 'Sending…';
   try {
     const sig = $('#pad').toDataURL('image/png');
-    const r = await call('induction', { answers: ANS, signature: sig, signedBy: name.toUpperCase() });
+    const r = await call('induction', {
+      answers: ANS, signature: sig, signedBy: name.toUpperCase(),
+      packRead: PACKREAD, opened: OPENED,
+    });
     stop('ok', 'Thank you — that is your induction done',
       'It has been sent to ' + INFO.project.name + ' and recorded as ' + (r.ref||'') +
       '. There is nothing else you need to do. This link will not work again.');
