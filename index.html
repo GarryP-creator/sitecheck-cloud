@@ -82,8 +82,27 @@ header.app{background:var(--ink);color:#fff}
 .dot.warn{background:var(--warn)}
 .dot.sync{background:var(--duty);animation:pulse 1s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.35}}
-.who{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--hivis);
-  text-transform:uppercase;padding:6px 9px;border:1.5px solid #3A3F45;border-radius:4px}
+.who{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;
+  letter-spacing:.08em;color:var(--hivis);text-transform:uppercase;padding:7px 10px;
+  border:1.5px solid #3A3F45;border-radius:4px}
+.who:active{background:#2A2E33}
+.acctwrap{position:fixed;inset:0;z-index:70}
+.acctbg{position:absolute;inset:0}
+.acctmenu{position:absolute;top:56px;right:14px;background:var(--plate);border:1px solid var(--line);
+  border-top:4px solid var(--hivis);border-radius:5px;box-shadow:0 10px 34px rgba(0,0,0,.28);
+  min-width:238px;overflow:hidden;padding:6px}
+.acctwho{padding:12px 12px 12px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.acctwho b{display:block;font-size:14px}
+.acctwho small{display:block;font-size:11px;color:var(--ink-soft);font-family:var(--mono);
+  letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
+.acctmenu button{display:flex;align-items:center;gap:11px;width:100%;text-align:left;
+  padding:12px;border-radius:4px;font-size:14px;font-weight:600}
+.acctmenu button:active{background:var(--concrete)}
+.acctmenu button.danger{color:var(--stop)}
+@media (max-width:560px){
+  .who{padding:7px 8px}
+  .acctmenu{left:10px;right:10px;top:52px;min-width:0}
+}
 @media (max-width:560px){ .who{display:none} .syncbtn .netlabel{display:none} }
 .uid{display:block;text-align:left;font-size:10px;font-weight:800;letter-spacing:.2em;
   text-transform:uppercase;color:#8D939A;margin:0 0 6px}
@@ -1052,7 +1071,7 @@ async function boot(){
   state.records  = await DB.allRecords();
   state.projects = await get('projects') || [];
   state.refseq   = await get('refseq')   || 0;
-  state.uid      = await get('lastUid')  || '';
+
 
   const cur = await get('current');
   state.site = state.projects.find(p => p.id === cur) || null;
@@ -1093,6 +1112,9 @@ async function boot(){
     render();
   }
 
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape'){ closeAccount(); closeSheet(); }
+  });
   window.addEventListener('online', () => { paintNet(); syncNow(); });
   window.addEventListener('offline', paintNet);
   setInterval(() => { if (navigator.onLine && state.profile) syncNow(); }, 60000);
@@ -1150,6 +1172,7 @@ function onLiveChange(){
 }
 
 function render(){
+  closeAccount();
   const v = state.view;
   if (v==='login') return $('#app').innerHTML = viewLogin();
   let body;
@@ -1176,7 +1199,7 @@ function shell(inner){
   return `
   <header class="app">
     <div class="hd">
-      <button class="brand" onclick="go('projects')" aria-label="Projects">
+      <button class="brand" onclick="go(state.site ? 'home' : 'projects')" aria-label="Home">
         <span class="mark">${logo("#FFD400","#14171A",17,34)}</span>
         <h1>SiteCheck<small>CLOUD · WRM</small></h1>
       </button>
@@ -1186,7 +1209,10 @@ function shell(inner){
           <span class="dot" id="netdot"></span>
           <span class="netlabel" id="netlabel">Synced</span>
         </button>
-        ${state.profile ? `<span class="who" title="${esc(state.profile.full_name||'')}">${esc(state.profile.user_id)}</span>` : ''}
+        ${state.profile ? `<button class="who" onclick="toggleAccount(event)" aria-haspopup="true">
+            ${esc(state.profile.user_id)}
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg>
+          </button>` : ''}
         <button class="lockbtn" onclick="lock()" aria-label="Lock and sign out">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
             <rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
@@ -1239,7 +1265,7 @@ function viewLogin(){
     <label class="uid">User ID</label>
     <input type="text" id="uid" class="uidbox" autocomplete="username"
            autocapitalize="none" autocorrect="off" spellcheck="false"
-           placeholder="e.g. PougherG" value="${esc(state.uid||'')}"
+           placeholder="e.g. DaviesK" value="${esc(state.uid||'')}"
            oninput="state.uid=this.value" ${locked?'disabled':''}>
 
     <div class="pins">${[0,1,2,3,4].map(i=>`<i class="${state.pin.length>i?'on':''}"></i>`).join('')}</div>
@@ -1282,7 +1308,7 @@ async function tryLogin(){
     const prof = await CLOUD.signIn(id, p);
     state.fails = 0;
     state.loginMsg = '';
-    await set('lastUid', id);
+
     await afterLogin(prof);
   } catch(e){
     console.error('sign-in failed:', e);
@@ -1322,8 +1348,13 @@ async function afterLogin(prof){
 
 async function lock(){
   await CLOUD.signOut();
-  state.profile = null; state.pin=''; state.view='login';
-  state.uid = await get('lastUid') || '';
+  // clear the User ID as well as the PIN: leaving a name on screen tells the
+  // next person who to try, which is half of what they would need to guess.
+  await DB.del('lastUid');
+  state.profile = null;
+  state.pin = ''; state.uid = ''; state.loginMsg = '';
+  state.fails = 0; state.lockUntil = 0;
+  state.view = 'login';
   render();
 }
 
@@ -1508,7 +1539,7 @@ function tiles(){
       ${tile('Reports','Download to a spreadsheet',ICONS.reports,'var(--duty)',"go('reports')", '')}
       ${tile('Documents','PDFs, plans and registers',ICONS.docs,'#0B7285',"openDocs()", '')}
       ${tile('History','Every change, who and when',ICONS.history,'var(--ink-soft)',"openAudit()", '')}
-      ${CLOUD.isSuper() ? tile('People','Accounts and roles',ICONS.people,'#6B21A8',"openUsers()", '') : ''}
+
       <button class="tile wide" onclick="go('site')">
         <div class="bar" style="background:var(--ink)"></div>
         <div class="body">
@@ -2128,6 +2159,46 @@ async function submitForm(){
   }
 }
 
+/* ---- the account menu ----------------------------------------------------
+   Anything to do with who you are rather than which project you are on:
+   people, roles, signing out. Reachable from every screen, because that is
+   where you think of it — not buried inside a project.                  */
+function toggleAccount(ev){
+  if (ev) ev.stopPropagation();
+  const open = document.getElementById('acctmenu');
+  if (open){ closeAccount(); return; }
+
+  const p = state.profile || {};
+  const el = document.createElement('div');
+  el.className = 'acctwrap'; el.id = 'acctmenu';
+  el.innerHTML = `<div class="acctbg" onclick="closeAccount()"></div>
+    <div class="acctmenu" role="menu">
+      <div class="acctwho">
+        <b>${esc(p.full_name || '')}</b>
+        <small>${esc(p.user_id || '')} &middot; ${esc(p.role || '')}</small>
+      </div>
+      ${CLOUD.isSuper() ? `<button role="menuitem" onclick="closeAccount();openUsers()">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+          <circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6M18 20a6 6 0 0 0-3-5.2"/></svg>
+        People and roles</button>` : ''}
+      <button role="menuitem" onclick="closeAccount();go('projects')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+          <path d="M3 21h18M5 21V8l7-5 7 5v13"/></svg>
+        Switch project</button>
+      <button role="menuitem" onclick="closeAccount();syncNow()">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+          <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/>
+          <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+        Sync now</button>
+      <button role="menuitem" class="danger" onclick="closeAccount();lock()">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+          <rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        Lock and sign out</button>
+    </div>`;
+  document.body.appendChild(el);
+}
+function closeAccount(){ const el = document.getElementById('acctmenu'); if (el) el.remove(); }
+
 /* ---- people (superuser) --------------------------------------------------
    Accounts are created in the Supabase dashboard for now, because creating a
    login needs a privileged key that must never sit in a browser. This screen
@@ -2141,7 +2212,7 @@ function viewUsers(){
         <small>${esc(u.full_name||'')}${u.email?' · '+esc(u.email):''}</small></span>
       <span class="pill ${u.active?'go':'grey'}">${u.active?'ACTIVE':'OFF'}</span>
     </button>`).join('');
-  return crumb('Home',"go('home')",'People') + `<main>
+  return crumb('Projects',"go('projects')",'People') + `<main>
     <div class="banner"><b>Accounts</b>
       Add someone here and they can sign in straight away with the User ID and PIN you set.
       Share a project with them and it appears on their device.</div>
@@ -2168,7 +2239,7 @@ function userForm(u){
   openSheet(isNew ? 'Add a person' : 'Edit ' + u.user_id, `
     <div class="q"><label class="qt">User ID</label>
       <p class="guide">What they type at the keypad. Letters, numbers, dots, hyphens or underscores.</p>
-      <input type="text" id="u_id" value="${esc(u?u.user_id:'')}" placeholder="e.g. WhitfieldD"
+      <input type="text" id="u_id" value="${esc(u?u.user_id:'')}" placeholder="e.g. DaviesK"
              autocapitalize="none" autocorrect="off" ${u?'disabled':''}></div>
 
     <div class="q"><label class="qt">Full name</label>
