@@ -1,7 +1,7 @@
 /* SiteCheck Cloud — service worker.
    Keeps the app itself on the device so it opens with no signal. Requests to
    Supabase are never cached: stale project data would be worse than none. */
-const VERSION = 'sitecheck-cloud-v10';
+const VERSION = 'sitecheck-cloud-v12';
 const SHELL = [
   './', './index.html', './db.js', './cloud.js', './pdf.js', './xlsx.js',
   './talks.js', './activities.js', './methods.js',

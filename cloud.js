@@ -310,6 +310,14 @@ const CLOUD = (() => {
     if (error) throw error;
     return data.signedUrl;
   }
+  /* Moving is the usual fix for a misfiled document — better than deleting and
+     uploading again, because the file itself never moves in storage. */
+  async function moveDocument(id, folder){
+    const c = client(); if (!c) throw new Error('You need a connection');
+    const { error } = await c.from('documents').update({ folder }).eq('id', id);
+    if (error) throw error;
+  }
+
   async function deleteDocument(doc){
     const c = client(); if (!c) throw new Error('offline');
     await c.storage.from('documents').remove([doc.path]);
@@ -346,7 +354,7 @@ const CLOUD = (() => {
     startLive, stopLive,
     listUsers, saveProfile, createUser, setPin, setActive,
     listShares, share, unshare,
-    uploadDocument, listDocuments, documentUrl, deleteDocument,
+    uploadDocument, listDocuments, documentUrl, deleteDocument, moveDocument,
     auditFor, deviceId, online,
   };
 })();

@@ -176,6 +176,7 @@ main{max-width:600px;margin:0 auto;padding:16px 16px 120px}
 .row .mini{flex:0 0 auto;border:2px solid var(--ink);border-radius:3px;padding:9px 11px;
   font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
 .row .mini:active{background:var(--ink);color:var(--hivis)}
+.row .mini.more{padding:9px 12px;font-size:16px;line-height:1}
 .row .tap{display:flex;align-items:center;gap:12px;flex:1;min-width:0;text-align:left;background:none;padding:0}
 
 /* --- form questions --- */
@@ -252,6 +253,25 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
 
 /* photos + signature */
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.drop{margin-top:12px;border:2px dashed var(--line);border-radius:4px;background:#fff;
+  padding:22px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px;
+  color:var(--ink-soft);transition:background .12s ease,border-color .12s ease}
+.drop.over{border-color:var(--go);background:#EBF5EE}
+.drop svg{color:var(--duty)}
+.drop b{font-size:14px;color:var(--ink)}
+.drop span{font-size:13px}
+.drop small{font-size:11px;color:var(--ink-soft)}
+.link{color:var(--duty);font-weight:700;text-decoration:underline;font-size:inherit}
+.qhead{display:flex;align-items:center;gap:10px;font-size:11px;font-weight:800;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-soft);margin:14px 0 8px}
+.qrow{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);
+  border-radius:3px;padding:10px 12px;margin-bottom:7px}
+.qrow .txt{flex:1;min-width:0}
+.qrow b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qrow small{color:var(--ink-soft);font-size:11px}
+.qrow .state{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.qrow .state.going{color:var(--duty)} .qrow .state.ok{color:var(--go)} .qrow .state.bad{color:var(--stop)}
+.qdel{color:var(--ink-soft);font-size:18px;line-height:1;padding:2px 6px}
 .folder{border:1px solid var(--line);border-radius:4px;background:var(--plate);
   margin-bottom:10px;overflow:hidden;box-shadow:var(--shadow)}
 .folderhead{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:15px 14px}
@@ -2393,7 +2413,7 @@ function viewDocs(){
 
     <div class="eyebrow">Upload</div>
     <div class="q">
-      <label class="qt" for="d_folder">Add a document</label>
+      <label class="qt" for="d_folder">Add documents</label>
       <select id="d_folder" onchange="folderChanged()">
         ${allFolders().map(f=>`<option${f==='Project documents'?' selected':''}>${esc(f)}</option>`).join('')}
         <option value="__new">Other — make a new folder…</option>
@@ -2401,8 +2421,19 @@ function viewDocs(){
       <div id="d_newwrap" style="display:none">
         <input type="text" id="d_newname" placeholder="Name the new folder, e.g. Permits" maxlength="60">
       </div>
-      <input type="file" id="d_file" style="margin-top:10px">
-      <button class="btn ghost" style="padding:12px;margin-top:10px" onclick="uploadDoc()">Upload</button>
+
+      <div class="drop" id="dropzone"
+           ondragover="dropOver(event,true)" ondragleave="dropOver(event,false)" ondrop="dropFiles(event)">
+        <input type="file" id="d_file" multiple onchange="filesPicked()" hidden>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+          <path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        <b>Drop files here</b>
+        <span>or <button type="button" class="link" onclick="document.getElementById('d_file').click()">choose from your device</button></span>
+        <small>You can add several at once. 15MB each.</small>
+      </div>
+
+      <div id="d_queue"></div>
+      <button class="btn ghost" style="padding:12px;margin-top:10px" id="d_upload" onclick="uploadDocs()">Upload</button>
     </div>
 
     ${folders.length ? `<div class="eyebrow">Filed &middot; ${list.length}</div>` : ''}
@@ -2422,6 +2453,7 @@ function viewDocs(){
                 <small>${uk(d.uploaded_at)}${d.size_bytes?' · '+fileSize(d.size_bytes):''}</small></span>
             </button>
             <button class="mini" onclick="openDoc('${d.id}')">OPEN</button>
+            <button class="mini more" onclick="docMenu('${d.id}')" aria-label="More">&#8942;</button>
           </div>`).join('')}</div>` : ''}
       </div>`).join('')}
 
@@ -2450,8 +2482,58 @@ async function openDocs(){
   catch(e){ toast('Could not load documents'); }
 }
 
-async function uploadDoc(){
-  const f = document.getElementById('d_file').files[0];
+/* --- uploading -----------------------------------------------------------
+   Several files at once, dropped or chosen. Each is uploaded in turn and
+   reported on individually, so one failure does not hide the others.     */
+let picked = [];
+
+function filesPicked(){
+  const input = document.getElementById('d_file');
+  addToQueue([...input.files]);
+  input.value = '';
+}
+function dropOver(ev, on){
+  ev.preventDefault();
+  const z = document.getElementById('dropzone');
+  if (z) z.classList.toggle('over', on);
+}
+function dropFiles(ev){
+  ev.preventDefault();
+  dropOver(ev, false);
+  const files = ev.dataTransfer && ev.dataTransfer.files;
+  if (files && files.length) addToQueue([...files]);
+}
+function addToQueue(files){
+  const tooBig = files.filter(f => f.size > 15 * 1024 * 1024);
+  const ok = files.filter(f => f.size <= 15 * 1024 * 1024);
+  picked = picked.concat(ok);
+  if (tooBig.length) toast(`${tooBig.length} file${tooBig.length>1?'s were':' was'} over 15MB and skipped`);
+  drawQueue();
+}
+function removeFromQueue(i){ picked.splice(i, 1); drawQueue(); }
+
+function drawQueue(){
+  const box = document.getElementById('d_queue');
+  const btn = document.getElementById('d_upload');
+  if (!box) return;
+  box.innerHTML = picked.length ? `
+    <div class="qhead">${picked.length} file${picked.length>1?'s':''} ready
+      <button class="link" onclick="picked=[];drawQueue()">clear</button></div>
+    ${picked.map((f,i) => `
+      <div class="qrow" id="qrow${i}">
+        <span class="txt"><b>${esc(f.name)}</b><small>${fileSize(f.size)}</small></span>
+        <span class="state" id="qstate${i}"></span>
+        <button class="qdel" onclick="removeFromQueue(${i})" aria-label="Remove">&times;</button>
+      </div>`).join('')}` : '';
+  if (btn){
+    btn.textContent = picked.length ? `Upload ${picked.length} file${picked.length>1?'s':''}` : 'Upload';
+    btn.disabled = !picked.length;
+  }
+}
+
+async function uploadDocs(){
+  if (!picked.length){ toast('Choose or drop some files first'); return; }
+
   const sel = document.getElementById('d_folder');
   let folder = sel.value;
   if (folder === '__new'){
@@ -2459,15 +2541,100 @@ async function uploadDoc(){
     if (!folder){ toast('Name the new folder first'); document.getElementById('d_newname').focus(); return; }
     if (folder.length > 60){ toast('That folder name is too long'); return; }
   }
-  if (!f){ toast('Choose a file first'); return; }
-  if (f.size > 15 * 1024 * 1024){ toast('That file is over 15MB'); return; }
-  toast('Uploading…');
+
+  const btn = document.getElementById('d_upload');
+  if (btn){ btn.disabled = true; btn.textContent = 'Uploading…'; }
+
+  let done = 0;
+  const failed = [];
+  for (let i = 0; i < picked.length; i++){
+    const cell = document.getElementById('qstate' + i);
+    if (cell){ cell.textContent = 'Uploading…'; cell.className = 'state going'; }
+    try {
+      await CLOUD.uploadDocument(state.site.id, folder, picked[i]);
+      done++;
+      if (cell){ cell.textContent = 'Done'; cell.className = 'state ok'; }
+    } catch(e){
+      console.error('upload failed:', picked[i].name, e);
+      failed.push(picked[i].name);
+      if (cell){ cell.textContent = 'Failed'; cell.className = 'state bad'; }
+    }
+  }
+
+  state.docs = await CLOUD.listDocuments(state.site.id);
+  (state.openFolders || (state.openFolders = new Set())).add(folder);
+
+  if (failed.length){
+    // keep the ones that failed so they can be tried again
+    picked = picked.filter(f => failed.includes(f.name));
+    toast(`${done} uploaded, ${failed.length} failed — see the list`);
+    drawQueue();
+    if (btn){ btn.disabled = false; btn.textContent = 'Try the failed ones again'; }
+    return;
+  }
+
+  picked = [];
+  render();
+  toast(`${done} file${done>1?'s':''} uploaded to ${folder}`);
+}
+
+/* Move or remove a document. Misfiling is easy and should not mean deleting
+   and uploading again. */
+function docMenu(id){
+  const d = (state.docs||[]).find(x => x.id === id); if (!d) return;
+  const others = allFolders().filter(f => f !== d.folder);
+  openSheet(d.name, `
+    <p class="sheetnote">Filed under <b>${esc(d.folder)}</b> &middot;
+      uploaded ${uk(d.uploaded_at)}</p>
+    <div class="q">
+      <label class="qt" for="mv_folder">Move to another folder</label>
+      <select id="mv_folder">
+        ${others.map(f=>`<option>${esc(f)}</option>`).join('')}
+        <option value="__new">Other — make a new folder…</option>
+      </select>
+      <div id="mv_newwrap" style="display:none">
+        <input type="text" id="mv_newname" placeholder="Name the new folder" maxlength="60">
+      </div>
+      <button class="btn ghost" style="padding:12px;margin-top:10px" onclick="moveDoc('${d.id}')">Move</button>
+    </div>
+    <button class="btn ghost" onclick="closeSheet();openDoc('${d.id}')">Open document</button>
+    <button class="btn danger" onclick="removeDoc('${d.id}')">Delete this document</button>`);
+
+  const sel = document.getElementById('mv_folder');
+  sel.addEventListener('change', () => {
+    document.getElementById('mv_newwrap').style.display = sel.value === '__new' ? 'block' : 'none';
+    if (sel.value === '__new') document.getElementById('mv_newname').focus();
+  });
+}
+
+async function moveDoc(id){
+  const sel = document.getElementById('mv_folder');
+  let folder = sel.value;
+  if (folder === '__new'){
+    folder = (document.getElementById('mv_newname').value || '').trim();
+    if (!folder){ toast('Name the new folder first'); return; }
+  }
   try {
-    await CLOUD.uploadDocument(state.site.id, folder, f);
+    await CLOUD.moveDocument(id, folder);
     state.docs = await CLOUD.listDocuments(state.site.id);
-    (state.openFolders || (state.openFolders = new Set())).add(folder);  // show where it went
-    render(); toast('Uploaded to ' + folder);
-  } catch(e){ console.error(e); toast(e.message || 'Upload failed'); }
+    (state.openFolders || (state.openFolders = new Set())).add(folder);
+    closeSheet(); render(); toast('Moved to ' + folder);
+  } catch(e){
+    console.error(e);
+    toast(/policy|permission|denied/i.test(String(e.message||e))
+      ? 'The database refused the move — run the document move script'
+      : String(e.message||e).slice(0,100));
+  }
+}
+
+async function removeDoc(id){
+  const d = (state.docs||[]).find(x => x.id === id); if (!d) return;
+  if (!confirm(`Delete "${d.name}"? This cannot be undone.`)) return;
+  try {
+    await CLOUD.deleteDocument(d);
+    state.docs = await CLOUD.listDocuments(state.site.id);
+    closeSheet(); render(); toast('Deleted');
+  } catch(e){ console.error(e); toast(String(e.message||e).slice(0,100)); }
 }
 
 async function openDoc(id){
