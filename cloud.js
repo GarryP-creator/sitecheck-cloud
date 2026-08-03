@@ -265,6 +265,56 @@ const CLOUD = (() => {
     if (error) throw error;
   }
 
+  /* --- pre-arrival inductions and contractor RAMS -------------------------
+     Contractors coming to site, and the one-time links sent to their people.
+     The token is made here, in the browser, from the operating system's own
+     random source — 32 bytes, which is far beyond guessing. */
+  function makeToken(){
+    const b = new Uint8Array(24);
+    crypto.getRandomValues(b);
+    return btoa(String.fromCharCode(...b)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+
+  async function listContractors(projectId){
+    const c = client(); if (!c) return [];
+    const { data, error } = await c.from('contractors')
+      .select('*').eq('project_id', projectId).order('name');
+    if (error) throw error;
+    return data || [];
+  }
+  async function saveContractor(row){
+    const c = client(); if (!c) throw new Error('You need a connection');
+    const { data, error } = await c.from('contractors').upsert(row).select();
+    if (error) throw error;
+    return (data || [])[0];
+  }
+  async function removeContractor(id){
+    const c = client(); if (!c) throw new Error('You need a connection');
+    const { error } = await c.from('contractors').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  async function listInvites(projectId){
+    const c = client(); if (!c) return [];
+    const { data, error } = await c.from('invites')
+      .select('*').eq('project_id', projectId).order('created_at', { ascending:false });
+    if (error) throw error;
+    return data || [];
+  }
+  async function createInvite(row){
+    const c = client(); if (!c) throw new Error('You need a connection');
+    const { data, error } = await c.from('invites')
+      .insert(Object.assign({ token: makeToken(), created_by: profile && profile.id }, row))
+      .select();
+    if (error) throw error;
+    return (data || [])[0];
+  }
+  async function updateInvite(id, patch){
+    const c = client(); if (!c) throw new Error('You need a connection');
+    const { error } = await c.from('invites').update(patch).eq('id', id);
+    if (error) throw error;
+  }
+
   /* --- sharing ------------------------------------------------------------ */
   async function listShares(projectId){
     const c = client(); if (!c) return [];
@@ -364,6 +414,8 @@ const CLOUD = (() => {
     listUsers, saveProfile, createUser, setPin, setActive,
     getEmailSettings, saveEmailSettings, testEmail, sendWelcome,
     listShares, share, unshare,
+    listContractors, saveContractor, removeContractor,
+    listInvites, createInvite, updateInvite, makeToken,
     uploadDocument, listDocuments, documentUrl, deleteDocument, moveDocument,
     auditFor, deviceId, online,
   };

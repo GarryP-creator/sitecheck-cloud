@@ -1,0 +1,273 @@
+// ============================================================================
+// SiteCheck — induct
+//
+// The only thing a visitor with no account ever talks to. They arrive with a
+// token from a link or a QR code; this function decides what, if anything,
+// they are allowed to see and do.
+//
+// The anonymous database role has no access to any table. Everything here goes
+// through the service key, and nothing happens until the token has been found,
+// checked for expiry, checked for use, and checked for revocation. A token
+// that fails any of those gets the same flat answer, so the page cannot be
+// used to work out whether a given link ever existed.
+//
+// The token is stored as written, so whoever sent a link can copy it again
+// without silently breaking one already emailed. It is long and random,
+// single-use, expiring and revocable, and only ever unlocks one form on one
+// project. The invites table is readable only by people who can already see
+// that project.
+//
+// Deploy: Supabase dashboard -> Edge Functions -> Deploy a new function,
+// name it exactly "induct", paste this in, deploy.
+// IMPORTANT: "Verify JWT with legacy secret" must be OFF. Visitors are not
+// signed in — that is the whole point.
+// ============================================================================
+
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...cors, 'Content-Type': 'application/json' },
+  });
+
+// One answer for every kind of bad token. Saying which way it failed would
+// tell someone probing for links whether they had found a real one.
+const NO = 'This link is not valid. It may have expired, already been used, or been withdrawn. Ask whoever sent it for a new one.';
+
+// What a visitor may send in. Anything that a browser might decide to render
+// rather than download is refused outright — an uploaded HTML or SVG file
+// served back from our own domain could run scripts as us.
+const ALLOWED = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+  'image/heic',
+]);
+const MAX_BYTES = 15 * 1024 * 1024;
+const MAX_FILES = 8;
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+
+  const KEY_SOURCES = ['SITECHECK_SERVICE_KEY', 'SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_ROLE_KEY'];
+  const keyFrom = KEY_SOURCES.find((n) => !!Deno.env.get(n));
+  const SERVICE_KEY = keyFrom ? Deno.env.get(keyFrom) : undefined;
+  if (!SERVICE_KEY) {
+    return json({ error: 'No service key. Add a secret named SITECHECK_SERVICE_KEY in Edge Functions -> Secrets.' }, 500);
+  }
+  const URL_ = Deno.env.get('SUPABASE_URL')!;
+
+  const db = async (path: string, init: RequestInit = {}) => {
+    const res = await fetch(`${URL_}/rest/v1/${path}`, {
+      ...init,
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+        ...(init.headers ?? {}),
+      },
+    });
+    const text = await res.text();
+    let body: unknown = null;
+    try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+    return { ok: res.ok, status: res.status, body };
+  };
+
+  let body: Record<string, any>;
+  try { body = await req.json(); } catch { return json({ error: 'Bad request' }, 400); }
+
+  const action = String(body.action ?? 'open');
+  const token = String(body.token ?? '');
+  if (!/^[A-Za-z0-9_-]{20,120}$/.test(token)) return json({ error: NO }, 400);
+
+  // --- find and check the invite -------------------------------------------
+  const found = await db(`invites?token=eq.${encodeURIComponent(token)}&select=*`);
+  const inv = found.ok && Array.isArray(found.body) ? found.body[0] : null;
+  if (!inv) return json({ error: NO }, 400);
+  if (inv.revoked_at) return json({ error: NO }, 400);
+  if (new Date(inv.expires_at).getTime() < Date.now()) return json({ error: NO }, 400);
+
+  // Already finished is a different thing from never valid, and worth saying
+  // plainly — otherwise somebody who completed it yesterday phones up thinking
+  // it failed.
+  if (inv.used_at && action !== 'open') {
+    return json({ error: 'This has already been completed and cannot be sent again.' }, 400);
+  }
+
+  const [proj, cont] = await Promise.all([
+    db(`projects?id=eq.${inv.project_id}&select=name,ref,address,client,induction_notes`),
+    inv.contractor_id
+      ? db(`contractors?id=eq.${inv.contractor_id}&select=name,rams_status,gate_inductions,rams_required,rams_note`)
+      : Promise.resolve({ ok: true, status: 200, body: [] as unknown[] }),
+  ]);
+  const project = proj.ok && Array.isArray(proj.body) ? proj.body[0] : null;
+  const contractor = cont.ok && Array.isArray(cont.body) ? cont.body[0] : null;
+  if (!project) return json({ error: NO }, 400);
+
+  const tasks: string[] = Array.isArray(inv.tasks) ? inv.tasks : ['induction'];
+
+  // The gate. Held shut until this contractor's RAMS have been accepted, when
+  // that has been asked for. The person sending in the RAMS is never held up
+  // by it, or nothing could ever be unlocked.
+  const gated = !!(contractor && contractor.gate_inductions &&
+    contractor.rams_status !== 'accepted' && !tasks.includes('rams'));
+
+  // ---------------------------------------------------------------- open
+  if (action === 'open') {
+    if (!inv.opened_at) {
+      await db(`invites?id=eq.${inv.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ opened_at: new Date().toISOString() }),
+      });
+    }
+    return json({
+      ok: true,
+      done: !!inv.used_at,
+      gated,
+      tasks,
+      person: { name: inv.person_name, email: inv.person_email },
+      project: {
+        name: project.name, ref: project.ref, address: project.address,
+        client: project.client, notes: project.induction_notes || '',
+      },
+      contractor: contractor ? { name: contractor.name, ramsStatus: contractor.rams_status } : null,
+      expiresAt: inv.expires_at,
+    });
+  }
+
+  if (gated) {
+    return json({ error: 'This induction is not open yet. Your employer needs to send in their risk assessment and method statement first, and it has to be accepted.' }, 400);
+  }
+
+  // ------------------------------------------------------------ submit RAMS
+  // Files first, so that a failed upload never leaves a signed induction
+  // pointing at documents that are not there.
+  if (action === 'rams') {
+    if (!tasks.includes('rams')) return json({ error: NO }, 400);
+    const files = Array.isArray(body.files) ? body.files : [];
+    if (!files.length) return json({ error: 'Attach at least one file' }, 400);
+    if (files.length > MAX_FILES) return json({ error: `That is more than ${MAX_FILES} files` }, 400);
+
+    const saved: string[] = [];
+    for (const f of files) {
+      const name = String(f.name ?? 'document');
+      const type = String(f.type ?? '');
+      if (!ALLOWED.has(type)) {
+        return json({ error: `${name} is not a kind of file we can accept. Send a PDF, a Word document or a photo.` }, 400);
+      }
+      let bytes: Uint8Array<ArrayBuffer>;
+      try {
+        const b64 = String(f.data ?? '').split(',').pop() ?? '';
+        bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      } catch { return json({ error: `Could not read ${name}` }, 400); }
+      if (bytes.byteLength > MAX_BYTES) {
+        return json({ error: `${name} is larger than 15MB` }, 400);
+      }
+
+      // Stored under a generated name. A visitor does not get to choose a
+      // path, so nothing they type can point anywhere it should not.
+      const safe = name.replace(/[^A-Za-z0-9._-]/g, '_').slice(-80);
+      const path = `${inv.project_id}/RAMS/${crypto.randomUUID()}-${safe}`;
+      const up = await fetch(`${URL_}/storage/v1/object/documents/${path}`, {
+        method: 'POST',
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          'Content-Type': type,
+          'x-upsert': 'false',
+        },
+        body: new Blob([bytes], { type }),
+      });
+      if (!up.ok) {
+        return json({ error: `Could not store ${name}. ${await up.text()}` }, 400);
+      }
+
+      const folder = contractor ? `RAMS — ${contractor.name}` : 'RAMS';
+      const rec = await db('documents', {
+        method: 'POST',
+        body: JSON.stringify({
+          project_id: inv.project_id,
+          name,
+          path,
+          folder,
+          size_bytes: bytes.byteLength,
+          mime_type: type,
+          uploaded_by: inv.created_by,
+        }),
+      });
+      if (!rec.ok) return json({ error: 'Stored the file but could not list it', detail: rec.body }, 400);
+      saved.push(name);
+    }
+
+    if (inv.contractor_id) {
+      await db(`contractors?id=eq.${inv.contractor_id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ rams_status: 'submitted', updated_at: new Date().toISOString() }),
+      });
+    }
+    return json({ ok: true, saved });
+  }
+
+  // ------------------------------------------------------- submit induction
+  if (action === 'induction') {
+    if (!tasks.includes('induction')) return json({ error: NO }, 400);
+    const answers = body.answers ?? {};
+    const signature = String(body.signature ?? '');
+    const signedBy = String(body.signedBy ?? '').trim();
+    if (!signedBy) return json({ error: 'Type your name to sign' }, 400);
+    if (!signature.startsWith('data:image/')) return json({ error: 'Please sign in the box' }, 400);
+    if (signature.length > 400_000) return json({ error: 'That signature is too large' }, 400);
+
+    const now = new Date();
+    const stamp = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const count = await db(`records?project_id=eq.${inv.project_id}&form_id=eq.f06&select=id`, {
+      headers: { Prefer: 'count=exact' },
+    });
+    const n = Array.isArray(count.body) ? count.body.length + 1 : 1;
+
+    const made = await db('records', {
+      method: 'POST',
+      body: JSON.stringify({
+        project_id: inv.project_id,
+        form_id: 'f06',
+        code: 'F06',
+        ref: `WRM-F06-${stamp}-${String(n).padStart(3, '0')}`,
+        title: `Site Induction — ${signedBy}`,
+        answers,
+        signature,
+        signed_by: signedBy,
+        signed_at: now.toISOString(),
+        created_by: inv.created_by,
+        submitted_via: 'induction_link',
+        submitted_name: signedBy,
+        submitted_email: inv.person_email,
+        device_id: 'induction-link',
+      }),
+    });
+    if (!made.ok) return json({ error: 'Could not save the induction', detail: made.body }, 400);
+    const recId = Array.isArray(made.body) && made.body[0] ? made.body[0].id : null;
+
+    // Spent, from this moment. Marked only after the record is safely in, so
+    // a failure never burns the link and leaves someone unable to try again.
+    await db(`invites?id=eq.${inv.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        used_at: now.toISOString(),
+        record_id: recId,
+        submitted_ip: req.headers.get('x-forwarded-for') ?? null,
+      }),
+    });
+
+    return json({ ok: true, ref: `WRM-F06-${stamp}-${String(n).padStart(3, '0')}` });
+  }
+
+  return json({ error: 'Unknown action' }, 400);
+});

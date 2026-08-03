@@ -1,11 +1,12 @@
 /* SiteCheck Cloud — service worker.
    Keeps the app itself on the device so it opens with no signal. Requests to
    Supabase are never cached: stale project data would be worse than none. */
-const VERSION = 'sitecheck-cloud-v13';
+const VERSION = 'sitecheck-cloud-v14';
 const SHELL = [
   './', './index.html', './db.js', './cloud.js', './pdf.js', './xlsx.js',
-  './talks.js', './activities.js', './methods.js',
-  './lib/jspdf.umd.min.js', './lib/supabase.js', './manifest.webmanifest',
+  './talks.js', './activities.js', './methods.js', './forms.js',
+  './lib/jspdf.umd.min.js', './lib/supabase.js', './lib/qrcode.js',
+  './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png',
   './icons/icon-512.png', './icons/favicon.svg'
 ];
@@ -31,6 +32,14 @@ self.addEventListener('fetch', e => {
   if (url.hostname.endsWith('supabase.co')) return;
 
   const sameOrigin = url.origin === self.location.origin;
+
+  // The public induction page is left entirely alone. It is a navigation to
+  // this same origin, so without this it would be treated as the app: cached
+  // under './index.html', which would replace the app with the induction page
+  // for anyone who happened to open a link on their own phone. A visitor's
+  // one-time link must reach the network anyway — a cached copy of it is never
+  // the right answer.
+  if (sameOrigin && url.pathname.endsWith('induct.html')) return;
   const isAppCode = sameOrigin &&
     (req.mode === 'navigate' || (/\.js$/.test(url.pathname) && !url.pathname.includes('/lib/')));
 

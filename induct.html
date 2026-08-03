@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Site induction — WRM</title>
+
+<!--
+  The public page. Someone with no account, no app and no login lands here
+  from a link or a QR code.
+
+  Deliberately standalone. It does not register the service worker, does not
+  touch IndexedDB, does not load the Supabase client, and has no route to any
+  other screen. It talks to exactly one thing: the `induct` edge function,
+  which checks the token before answering. If this page were ever hostile, the
+  worst it could do is submit the one induction it was invited to.
+
+  The form questions come from forms.js — the same definitions the app uses,
+  so the two cannot drift apart.
+-->
+
+<script src="./forms.js"></script>
+<style>
+:root{
+  --hivis:#FFD400; --ink:#14171A; --ink-soft:#5A5F66; --concrete:#E7E5DF;
+  --go:#007A33; --stop:#C8102E; --warn:#E07B00; --duty:#0057B8;
+  --line:#C9C6BE; --plate:#FBFAF7;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  margin:0;background:var(--plate);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  font-size:15px;line-height:1.5;
+}
+.tape{height:10px;background:repeating-linear-gradient(45deg,
+  var(--hivis) 0 14px, var(--ink) 14px 28px)}
+header{background:var(--ink);color:#fff;padding:16px 18px}
+header b{display:block;font-size:19px;letter-spacing:.4px;color:var(--hivis)}
+header small{color:#C9C6BE}
+main{max-width:640px;margin:0 auto;padding:18px 16px 120px}
+h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);
+  margin:26px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.card{background:#fff;border:1px solid var(--line);border-radius:4px;padding:14px;margin-bottom:12px}
+.banner{background:#FFF6D6;border:2px solid var(--hivis);border-radius:4px;padding:12px 14px;
+  font-size:13px;margin-bottom:16px}
+.banner.bad{background:#FBE3E7;border-color:var(--stop)}
+.banner.ok{background:#DFF0E4;border-color:var(--go)}
+.banner b{display:block;margin-bottom:3px}
+.pack{white-space:pre-wrap}
+label.qt{display:block;font-weight:600;margin-bottom:6px}
+input[type=text],input[type=tel],input[type=email],textarea{
+  width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:3px;
+  font:inherit;background:#fff;color:var(--ink)}
+textarea{min-height:80px;resize:vertical}
+.tick{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--concrete);cursor:pointer}
+.tick:last-child{border-bottom:0}
+.box{flex:0 0 26px;height:26px;border:2px solid var(--line);border-radius:4px;background:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;margin-top:1px}
+.tick.on .box{background:var(--go);border-color:var(--go)}
+.tick span{flex:1}
+canvas{width:100%;height:170px;background:#fff;border:1px dashed var(--line);border-radius:4px;touch-action:none;display:block}
+.btn{display:block;width:100%;padding:14px;border:0;border-radius:4px;font:inherit;font-weight:700;
+  cursor:pointer;margin-top:10px;background:var(--concrete);color:var(--ink)}
+.btn.go{background:var(--go);color:#fff}
+.btn.ghost{background:transparent;border:1.5px solid var(--line)}
+.btn[disabled]{opacity:.5;cursor:default}
+.files{font-size:13px;margin-top:8px}
+.files div{padding:6px 0;border-bottom:1px solid var(--concrete);display:flex;justify-content:space-between;gap:10px}
+.guide{font-size:13px;color:var(--ink-soft);margin:0 0 8px}
+.foot{text-align:center;color:var(--ink-soft);font-size:12px;margin:28px 0 0}
+.msg{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;
+  padding:11px 16px;border-radius:4px;font-size:14px;max-width:90%;z-index:9}
+</style>
+</head>
+<body>
+<div class="tape"></div>
+<header>
+  <b>SiteCheck</b>
+  <small>WRM &middot; Workplace Risk Management Ltd</small>
+</header>
+<main id="app"><p class="guide">Loading…</p></main>
+
+<script>
+const FN  = 'https://rhudsvoxltnugkaceiuy.supabase.co/functions/v1/induct';
+const KEY = 'sb_publishable_JdcDqwmY_wOJpD5sQdKJuA_i9ddNFP6';
+
+const $   = s => document.querySelector(s);
+const esc = s => String(s??'').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let TOKEN = '', INFO = null, ANS = {}, SIG = null, FILES = [];
+
+function toast(t){
+  const el = document.createElement('div');
+  el.className = 'msg'; el.textContent = t;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 4200);
+}
+
+async function call(action, extra){
+  const res = await fetch(FN, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', apikey:KEY, Authorization:'Bearer '+KEY },
+    body: JSON.stringify(Object.assign({ action, token: TOKEN }, extra||{})),
+  });
+  let out = null;
+  try { out = await res.json(); } catch(e){}
+  if (!res.ok || (out && out.error)) throw new Error((out && out.error) || 'Something went wrong. Try again.');
+  return out;
+}
+
+/* ---- states that are not the form ---------------------------------------- */
+function stop(kind, title, text){
+  $('#app').innerHTML = `<div class="banner ${kind}"><b>${esc(title)}</b>${esc(text)}</div>
+    <p class="foot">SiteCheck &middot; WRM</p>`;
+}
+
+/* ---- the induction form -------------------------------------------------- */
+const F06 = () => (typeof FORMS !== 'undefined' ? FORMS : []).find(f => f.id === 'f06');
+
+function field(it, prefill){
+  const v = esc(prefill || '');
+  if (it.type === 'textarea')
+    return `<textarea id="i_${it.id}" oninput="setV('${it.id}',this.value)"></textarea>`;
+  const t = it.type === 'tel' ? 'tel' : 'text';
+  return `<input type="${t}" id="i_${it.id}" value="${v}" oninput="setV('${it.id}',this.value)">`;
+}
+
+function draw(){
+  const f = F06();
+  if (!f){ stop('bad','Could not load the induction','Please tell whoever sent you this link.'); return; }
+
+  const p = INFO.project, c = INFO.contractor;
+  const wantsRams = INFO.tasks.includes('rams');
+  const wantsInduction = INFO.tasks.includes('induction');
+
+  let html = `
+    <div class="card">
+      <b>${esc(p.name)}</b><br>
+      <small>${esc([p.ref, p.address].filter(Boolean).join(' · '))}</small>
+      ${c ? `<br><small>For ${esc(c.name)}</small>` : ''}
+    </div>
+    <div class="banner"><b>Before you come to site</b>
+      Please read this through, answer the questions and sign at the bottom.
+      It takes a few minutes and only needs doing once.</div>`;
+
+  if (p.notes) html += `<h2>Site information</h2><div class="card pack">${esc(p.notes)}</div>`;
+
+  if (wantsRams){
+    html += `<h2>Risk assessment and method statement</h2>
+      <div class="card">
+        <p class="guide">Send in the RAMS for the work you are coming to do. PDF, Word or
+          photographs. They will be reviewed before work starts.</p>
+        <input type="file" id="ramsfiles" multiple
+               accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic" onchange="pickFiles(this)">
+        <div class="files" id="filelist"></div>
+        <button class="btn ghost" id="upbtn" onclick="sendRams()">Send these files</button>
+      </div>`;
+  }
+
+  if (wantsInduction){
+    f.sections.forEach(sec => {
+      html += `<h2>${esc(sec.title)}</h2><div class="card">`;
+      sec.items.forEach(it => {
+        if (it.type === 'check'){
+          html += `<div class="tick" id="t_${it.id}" onclick="tick('${it.id}')">
+            <div class="box">&#10003;</div><span>${esc(it.text)}</span></div>`;
+        } else {
+          const pre = it.id === 'a1' ? INFO.person.name : '';
+          html += `<div style="padding:10px 0"><label class="qt" for="i_${it.id}">${esc(it.text)}</label>
+            ${field(it, pre)}</div>`;
+        }
+      });
+      html += `</div>`;
+    });
+
+    html += `<h2>Sign</h2>
+      <div class="card">
+        <p class="guide">Sign with your finger or mouse.</p>
+        <canvas id="pad"></canvas>
+        <button class="btn ghost" onclick="clearPad()">Clear signature</button>
+        <div style="margin-top:14px">
+          <label class="qt" for="signed">Your name in capitals</label>
+          <input type="text" id="signed" value="${esc(INFO.person.name||'')}"
+                 style="text-transform:uppercase">
+        </div>
+        <button class="btn go" id="done" onclick="submit()">Done — send my induction</button>
+      </div>`;
+  }
+
+  html += `<p class="foot">SiteCheck &middot; the whole site, in your pocket</p>`;
+  $('#app').innerHTML = html;
+  if (wantsInduction) pad();
+}
+
+function it_prefill(){
+  // The name box is pre-filled from the invite, so the answer must be too —
+  // otherwise a visitor who does not retype it submits a blank name.
+  const f = F06(); if (!f) return;
+  if (INFO.person.name) ANS['a1'] = { v: INFO.person.name };
+}
+
+function setV(id, v){ ANS[id] = { v }; }
+function tick(id){
+  const el = document.getElementById('t_'+id);
+  const on = el.classList.toggle('on');
+  ANS[id] = { v: on ? 'pass' : '' };
+}
+
+/* ---- signature ----------------------------------------------------------- */
+let ctx, drawing = false, dirty = false;
+function pad(){
+  const c = $('#pad'); if (!c) return;
+  const r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  c.width = r.width * dpr; c.height = r.height * dpr;
+  ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14171A';
+  const at = e => {
+    const b = c.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return [t.clientX - b.left, t.clientY - b.top];
+  };
+  const start = e => { drawing = true; dirty = true; ctx.beginPath(); ctx.moveTo(...at(e)); e.preventDefault(); };
+  const move  = e => { if (!drawing) return; ctx.lineTo(...at(e)); ctx.stroke(); e.preventDefault(); };
+  const end   = () => { drawing = false; };
+  c.addEventListener('mousedown', start); c.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  c.addEventListener('touchstart', start, {passive:false});
+  c.addEventListener('touchmove', move, {passive:false});
+  c.addEventListener('touchend', end);
+}
+function clearPad(){
+  const c = $('#pad'); if (!c || !ctx) return;
+  ctx.clearRect(0, 0, c.width, c.height); dirty = false;
+}
+
+/* ---- RAMS ---------------------------------------------------------------- */
+function pickFiles(input){
+  FILES = [...input.files];
+  $('#filelist').innerHTML = FILES.map(f =>
+    `<div><span>${esc(f.name)}</span><span>${Math.round(f.size/1024)} KB</span></div>`).join('')
+    || '<div>No files chosen</div>';
+}
+const readFile = f => new Promise((ok, no) => {
+  const r = new FileReader();
+  r.onload = () => ok(r.result);
+  r.onerror = () => no(new Error('Could not read ' + f.name));
+  r.readAsDataURL(f);
+});
+async function sendRams(){
+  if (!FILES.length){ toast('Choose the files first'); return; }
+  const btn = $('#upbtn'); btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const files = [];
+    for (const f of FILES) files.push({ name: f.name, type: f.type, data: await readFile(f) });
+    await call('rams', { files });
+    btn.textContent = 'Sent — thank you';
+    toast('Your RAMS have been sent');
+    FILES = [];
+  } catch(e){
+    toast(e.message);
+    btn.disabled = false; btn.textContent = 'Send these files';
+  }
+}
+
+/* ---- submit -------------------------------------------------------------- */
+async function submit(){
+  const f = F06();
+  const name = ($('#signed').value || '').trim();
+  if (!name){ toast('Type your name to sign'); return; }
+  if (!dirty){ toast('Please sign in the box'); return; }
+
+  // Every confirmation has to be ticked. This is an induction — a half-read
+  // one is worth less than none, because it looks like it was done.
+  const missing = [];
+  f.sections.forEach(s => s.items.forEach(it => {
+    if (it.type === 'check' && !(ANS[it.id] && ANS[it.id].v === 'pass')) missing.push(it.text);
+  }));
+  if (missing.length){
+    toast('Please confirm all ' + missing.length + ' remaining item' + (missing.length>1?'s':''));
+    return;
+  }
+
+  const btn = $('#done'); btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const sig = $('#pad').toDataURL('image/png');
+    const r = await call('induction', { answers: ANS, signature: sig, signedBy: name.toUpperCase() });
+    stop('ok', 'Thank you — that is your induction done',
+      'It has been sent to ' + INFO.project.name + ' and recorded as ' + (r.ref||'') +
+      '. There is nothing else you need to do. This link will not work again.');
+  } catch(e){
+    toast(e.message);
+    btn.disabled = false; btn.textContent = 'Done — send my induction';
+  }
+}
+
+/* ---- start --------------------------------------------------------------- */
+(async function(){
+  const q = new URLSearchParams(location.search);
+  TOKEN = q.get('t') || '';
+  if (!TOKEN){
+    stop('bad','No link found','Open the link you were sent, or scan the QR code again.');
+    return;
+  }
+  try {
+    INFO = await call('open');
+  } catch(e){
+    stop('bad','This link cannot be opened', e.message);
+    return;
+  }
+  if (INFO.done){
+    stop('ok','Already completed',
+      'This induction has been filled in and signed. There is nothing else to do.');
+    return;
+  }
+  if (INFO.gated){
+    stop('bad','Not open yet',
+      'Your employer needs to send in their risk assessment and method statement, and it has to be accepted, before this induction opens. Please try again nearer the time.');
+    return;
+  }
+  it_prefill();
+  draw();
+})();
+</script>
+</body>
+</html>
