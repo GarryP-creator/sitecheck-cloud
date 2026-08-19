@@ -1728,10 +1728,10 @@ async function submitForm(){
    to interrupt the person. It either works, or it queues, or it says why —
    and the record screen shows which.                                      */
 async function sendToPortal(rec){
-  const site = state.site || {};
-  if (!site.wrmSiteRef){
-    state.portal = { state:'nolink' }; paintPortal(); return;
-  }
+  /* Deliberately no check against state.site here. A device that has not
+     synced since the project was linked holds a stale copy, and would refuse
+     to send something the server would happily accept. The server has the
+     current answer, so let it give it.                                    */
   state.portal = { state:'sending' }; paintPortal();
 
   if (!navigator.onLine){
@@ -1741,8 +1741,9 @@ async function sendToPortal(rec){
   }
   try {
     const r = await CLOUD.sendToPortal(rec.id);
-    if (r && r.ok) state.portal = { state: r.duplicate ? 'already' : 'sent' };
-    else           state.portal = { state:'held', why: (r && r.message) || 'The portal would not take it.' };
+    if (r && r.ok)                       state.portal = { state: r.duplicate ? 'already' : 'sent' };
+    else if (r && r.reason==='not_linked') state.portal = { state:'nolink' };
+    else                                 state.portal = { state:'held', why: (r && r.message) || 'The portal would not take it.' };
   } catch(e){
     await DB.queue({ kind:'portal', row:{ record_id: rec.id } });
     state.pendingCount = (await DB.pending()).length;
@@ -1759,7 +1760,7 @@ function portalLine(){
     sent:    ['✓', 'Filed in the WRM client portal'],
     already: ['✓', 'Already in the client portal'],
     queued:  ['◷', 'Waiting for a connection — it will go on its own'],
-    nolink:  ['—', 'Not sent: this project has no client portal site set'],
+    nolink:  ['—', 'Not sent: this project is not linked to a client portal site'],
     held:    ['!', p.why || 'The client portal held this for review'],
   }[p.state] || ['', ''];
   return `<p class="guide" id="portalline"><b>${say[0]}</b> ${esc(say[1])}</p>`;
