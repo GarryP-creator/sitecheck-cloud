@@ -1704,6 +1704,7 @@ async function submitForm(){
   await DB.del('draft:' + f.id);
 
   state.record = rec;
+  state.portal = null; state.portalFor = rec.id;
   state.view = 'record';
   render();
 
@@ -1717,8 +1718,56 @@ async function submitForm(){
     await DB.putRecord(rec);
     paintSync();
     toast('Saved to ' + ((state.site||{}).name || 'this project'));
-    fileRecordPDF(rec);          // files the signed PDF against the project
+    await fileRecordPDF(rec);    // files the signed PDF against the project
+    sendToPortal(rec);           // and hands it to the WRM client portal
   }
+}
+
+/* ---- the client portal ----------------------------------------------------
+   The record is already safe by the time this runs, so nothing here is allowed
+   to interrupt the person. It either works, or it queues, or it says why —
+   and the record screen shows which.                                      */
+async function sendToPortal(rec){
+  const site = state.site || {};
+  if (!site.wrmSiteRef){
+    state.portal = { state:'nolink' }; paintPortal(); return;
+  }
+  state.portal = { state:'sending' }; paintPortal();
+
+  if (!navigator.onLine){
+    await DB.queue({ kind:'portal', row:{ record_id: rec.id } });
+    state.pendingCount = (await DB.pending()).length;
+    state.portal = { state:'queued' }; paintPortal(); paintSync(); return;
+  }
+  try {
+    const r = await CLOUD.sendToPortal(rec.id);
+    if (r && r.ok) state.portal = { state: r.duplicate ? 'already' : 'sent' };
+    else           state.portal = { state:'held', why: (r && r.message) || 'The portal would not take it.' };
+  } catch(e){
+    await DB.queue({ kind:'portal', row:{ record_id: rec.id } });
+    state.pendingCount = (await DB.pending()).length;
+    state.portal = { state:'queued' }; paintSync();
+  }
+  paintPortal();
+}
+
+function portalLine(){
+  const p = state.portal;
+  if (!p) return '';
+  const say = {
+    sending: ['…', 'Sending to the client portal'],
+    sent:    ['✓', 'Filed in the WRM client portal'],
+    already: ['✓', 'Already in the client portal'],
+    queued:  ['◷', 'Waiting for a connection — it will go on its own'],
+    nolink:  ['—', 'Not sent: this project has no client portal site set'],
+    held:    ['!', p.why || 'The client portal held this for review'],
+  }[p.state] || ['', ''];
+  return `<p class="guide" id="portalline"><b>${say[0]}</b> ${esc(say[1])}</p>`;
+}
+
+function paintPortal(){
+  const box = document.getElementById('portalbox');
+  if (box) box.innerHTML = portalLine();
 }
 
 /* ---- the account menu ----------------------------------------------------
@@ -3032,6 +3081,7 @@ function openRecord(id){ state.record = state.records.find(r=>r.id===id); state.
 
 function viewRecord(){
   const r = state.record;
+  if (state.portalFor !== r.id){ state.portal = null; }
   const f = FORMS.find(x=>x.id===r.formId);
   const rows = [];
   f.sections.forEach(s=>{
@@ -3052,6 +3102,7 @@ function viewRecord(){
         ? 'Signed against: ' + esc(r.pack.docs.map(d=>d.name).join(', ')) + '<br>' : ''}
       <span style="font-family:var(--mono);font-size:11px">${esc(r.ref)}</span>
     </div>
+    <div id="portalbox">${portalLine()}</div>
     <button class="btn primary" onclick="makePDF()">Download PDF</button>
     ${PAIR[r.formId] ? `<button class="btn ghost" onclick="combinedRAMS()">Download combined RAMS (PDF)</button>` : ''}
     <div style="height:14px"></div>
@@ -3247,6 +3298,13 @@ function viewSite(){
     ${fld('address','Site address','Street, town, postcode')}
     ${fld('client','Client','Client organisation')}
 
+    <div class="q"><label class="qt" for="s_wrmSiteRef">WRM client portal site</label>
+      <p class="guide">The site reference in the client portal, e.g. GPC-0001. Set it once
+        and every completed form on this project files itself there.
+        Leave it empty and nothing is sent.</p>
+      <input type="text" id="s_wrmSiteRef" value="${esc(s.wrmSiteRef||'')}" placeholder="GPC-0001">
+    </div>
+
     ${isNew ? '' : `
     <div class="eyebrow">Pre-arrival induction</div>
     <div class="banner">What someone sees when you send them an induction link,
@@ -3272,7 +3330,9 @@ function viewSite(){
 }
 async function saveSite(){
   const vals = {};
-  ['name','ref','address','client'].forEach(k => vals[k] = $('#s_'+k).value.trim());
+  ['name','ref','address','client','wrmSiteRef'].forEach(k => {
+    const box = $('#s_'+k); if (box) vals[k] = box.value.trim();
+  });
   const notesBox = $('#s_notes');
   if (notesBox) vals.inductionNotes = notesBox.value.trim();
   vals.inductionDocs = state.packDraft || ((state.site||{}).inductionDocs || []);

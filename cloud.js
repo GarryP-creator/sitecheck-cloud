@@ -104,6 +104,7 @@ const CLOUD = (() => {
     ownerId: r.owner_id, updatedAt: r.updated_at,
     inductionNotes: r.induction_notes || '',
     inductionDocs: Array.isArray(r.induction_docs) ? r.induction_docs : [],
+    wrmSiteRef: r.wrm_site_ref || '',
   });
 
   async function saveProject(p){
@@ -112,6 +113,7 @@ const CLOUD = (() => {
       client: p.client || null, owner_id: p.ownerId || (profile && profile.id),
       induction_notes: p.inductionNotes || null,
       induction_docs: p.inductionDocs || [],
+      wrm_site_ref: (p.wrmSiteRef || '').trim() || null,
       updated_at: new Date().toISOString(), updated_by: profile && profile.id,
     };
     const c = client();
@@ -196,6 +198,10 @@ const CLOUD = (() => {
           if (error && error.code === '23505') error = null;   // already up there
         }
         if (j.kind === 'document'){ ({ error } = await c.from('documents').insert(j.row)); }
+        if (j.kind === 'portal'){
+          try { await sendToPortal(j.row.record_id); }
+          catch(e){ error = { message: e.message || String(e) }; }
+        }
 
         if (!error){ await DB.done(j.seq); sent++; continue; }
 
@@ -275,6 +281,29 @@ const CLOUD = (() => {
   const saveEmailSettings = (s)         => callAdmin({ action:'savesettings', ...s });
   const testEmail         = (s)         => callAdmin({ action:'testmail', ...s });
   const sendWelcome       = (id, userId, pin) => callAdmin({ action:'welcome', id, userId, pin });
+
+  /* --- the client portal --------------------------------------------------
+     Handing a signed record over to WRM's client portal. The app only ever
+     names the record; the edge function does the rest, so the portal's token
+     never exists on a device.                                             */
+  async function sendToPortal(recordId){
+    const c = client(); if (!c) throw new Error('You need a connection');
+    const { data, error } = await c.functions.invoke('portal', { body:{ recordId } });
+    if (error){
+      let msg = error.message || 'Could not reach the portal';
+      try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch(e){}
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  async function portalStateFor(projectId){
+    const c = client(); if (!c) return [];
+    const { data, error } = await c.from('portal_deliveries')
+      .select('*').eq('project_id', projectId);
+    if (error) return [];
+    return data || [];
+  }
 
   async function saveProfile(p){
     const c = client(); if (!c) throw new Error('offline');
@@ -435,5 +464,6 @@ const CLOUD = (() => {
     listInvites, createInvite, updateInvite, makeToken,
     uploadDocument, listDocuments, documentUrl, deleteDocument, moveDocument,
     auditFor, deviceId, online,
+    sendToPortal, portalStateFor,
   };
 })();
