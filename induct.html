@@ -132,16 +132,18 @@ function shrink(file){
 async function pickSelfie(input){
   const f = input.files && input.files[0];
   const box = document.getElementById('selfiebox');
+  const btn = document.getElementById('g_selfie_btn');
   if (!f){ SELFIE = null; if (box) box.innerHTML = ''; return; }
   if (box) box.innerHTML = '<small>Preparing the photo…</small>';
   try {
     SELFIE = await shrink(f);
     if (box) box.innerHTML =
-      `<img src="${SELFIE}" alt="" style="max-width:150px;border-radius:10px;display:block">
-       <small>Tap the button above to take it again.</small>`;
+      `<img src="${SELFIE}" alt="" style="max-width:150px;border-radius:10px;display:block">`;
+    if (btn) btn.innerHTML = '&#128247; Take it again';
   } catch(e){
     SELFIE = null;
     if (box) box.innerHTML = '<small>That photo would not open. Try again, or ask the site manager to induct you.</small>';
+    if (btn) btn.innerHTML = '&#128247; Take photo';
     toast(e.message);
   }
 }
@@ -221,7 +223,10 @@ function draw(){
         <p class="guide">Send in the RAMS for the work you are coming to do. PDF, Word or
           photographs. They will be reviewed before work starts.</p>
         <input type="file" id="ramsfiles" multiple
-               accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic" onchange="pickFiles(this)">
+               accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic" onchange="pickFiles(this)"
+               style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+        <label class="btn ghost" for="ramsfiles" id="ramsbtn"
+               style="cursor:pointer;text-align:center">&#128206; Choose your files</label>
         <div class="files" id="filelist"></div>
         <button class="btn ghost" id="upbtn" onclick="sendRams()">Send these files</button>
       </div>`;
@@ -246,8 +251,14 @@ function draw(){
           <label class="qt">Photo of you, taken now</label>
           <p class="guide">This is how the site manager checks who signed in. Face
             the camera, somewhere with a bit of light.</p>
+          <!-- The input is hidden rather than removed. A file input's button
+               says "Choose file" and no attribute changes that, so the label
+               is the button and the input does the work behind it. -->
           <input type="file" id="g_selfie" accept="image/*" capture="user"
-                 onchange="pickSelfie(this)">
+                 onchange="pickSelfie(this)"
+                 style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+          <label class="btn ghost" for="g_selfie" id="g_selfie_btn"
+                 style="cursor:pointer;text-align:center">&#128247; Take photo</label>
           <div id="selfiebox" style="padding-top:10px"></div>
         </div>
         <p class="guide">If your phone will not take a photo, go and find the site

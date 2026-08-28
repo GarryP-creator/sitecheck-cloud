@@ -2402,7 +2402,10 @@ function manualInduct(){
       <input type="tel" id="m_phone" inputmode="tel"></div>
     <div class="q"><label class="qt">Photo of them, taken now</label>
       <input type="file" id="m_selfie" accept="image/*" capture="environment"
-             onchange="mPickSelfie(this)">
+             onchange="mPickSelfie(this)"
+             style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+      <label class="btn ghost" for="m_selfie" id="m_selfie_btn"
+             style="cursor:pointer;text-align:center">&#128247; Take their photo</label>
       <div id="m_selfiebox" style="padding-top:10px"></div></div>
     <button class="btn go" id="m_go" onclick="saveManualInduction()">Record the induction</button>
     <button class="btn ghost" onclick="closeSheet()">Cancel</button>`);
@@ -2412,12 +2415,18 @@ let M_SELFIE = null;
 async function mPickSelfie(input){
   const f = input.files && input.files[0];
   const box = document.getElementById('m_selfiebox');
+  const btn = document.getElementById('m_selfie_btn');
   if (!f){ M_SELFIE = null; if (box) box.innerHTML = ''; return; }
   if (box) box.innerHTML = '<small>Preparing…</small>';
   try {
     M_SELFIE = await shrinkImage(f, 900, 0.7);
     if (box) box.innerHTML = `<img src="${M_SELFIE}" alt="" style="max-width:150px;border-radius:10px">`;
-  } catch(e){ M_SELFIE = null; if (box) box.innerHTML = '<small>Could not read that photo</small>'; }
+    if (btn) btn.innerHTML = '&#128247; Take it again';
+  } catch(e){
+    M_SELFIE = null;
+    if (box) box.innerHTML = '<small>Could not read that photo</small>';
+    if (btn) btn.innerHTML = '&#128247; Take their photo';
+  }
 }
 
 function shrinkImage(file, max, q){
