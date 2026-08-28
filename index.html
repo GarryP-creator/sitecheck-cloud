@@ -2146,6 +2146,27 @@ function viewVisitors(){
       Send someone a link or a QR code and they read the induction, answer the
       questions and sign — days before they arrive. No account needed.</div>
     ${cons.map(block).join('') || '<div class="empty"><b>No contractors yet</b></div>'}
+
+    <div class="eyebrow">At the gate</div>
+    ${(() => {
+      const g = gateCode();
+      if (!g) return `
+        <div class="banner"><b>No gate code yet</b>
+          A code you print once and fix to the gate. Anyone who turns up without
+          an induction scans it and gets this project's induction on their own
+          phone, with a photo of themselves against it.</div>
+        <button class="btn primary" onclick="makeGateCode()">Create the gate code</button>`;
+      return `
+        <button class="row" onclick="showGate()">
+          <span class="code">QR</span>
+          <span class="txt"><b>Gate code</b>
+            <small>${g.use_count || 0} inducted at the gate${g.last_used_at
+              ? ' &middot; last ' + new Date(g.last_used_at).toLocaleDateString('en-GB') : ''}</small></span>
+          <span class="pill go">LIVE</span>
+        </button>
+        <button class="btn ghost" onclick="manualInduct()">Induct someone yourself</button>`;
+    })()}
+
     <div class="eyebrow">Add</div>
     <button class="btn primary" onclick="contractorForm(null)">+ Add a contractor</button>
   </main>`;
@@ -2266,6 +2287,228 @@ async function savePerson(contractorId){
     if (btn){ btn.disabled = false; btn.textContent = 'Create the link'; }
   }
 }
+
+/* ---- the gate code -------------------------------------------------------
+   One code per project, printed and fixed to the gate. Unlike a person
+   invite it is reusable and nobody is named on it, so the induction page
+   asks who they are and makes them take a photograph. */
+
+const gateCode = () => (state.invites || []).find(i => i.kind === 'gate' && !i.revoked_at);
+
+async function makeGateCode(){
+  if (!state.site) return;
+  try {
+    // Ten years. A poster on a fence has no natural expiry date, and one
+    // picked at random is just a way of having it stop working on a wet
+    // Tuesday with nobody knowing why. Withdrawing it is the way to stop it.
+    const until = new Date();
+    until.setFullYear(until.getFullYear() + 10);
+    await CLOUD.createInvite({
+      project_id: state.site.id, contractor_id: null,
+      kind: 'gate', person_name: null, person_email: null,
+      tasks: ['induction'], expires_at: until.toISOString(),
+    });
+    await openVisitors();
+    const g = gateCode(); if (g) showGate();
+    toast('Gate code created');
+  } catch(e){ toast(String(e.message||e).slice(0,110)); }
+}
+
+function showGate(){
+  const g = gateCode(); if (!g) return;
+  const url = inviteLink(g.token);
+  openSheet('Gate code', `
+    <p class="sheetnote">Print this and fix it to the gate. Anyone who scans it
+      gets this project's induction straight away — no app, no account, no
+      searching for the right form.</p>
+    <div class="q"><input type="text" id="lk" value="${esc(url)}" readonly
+      onclick="this.select()" style="font-size:12px"></div>
+    <div id="qrbox" style="text-align:center;padding:14px 0"></div>
+    <button class="btn go" onclick="printGate()">Print the gate notice</button>
+    <button class="btn ghost" onclick="downloadQR('${esc((state.site||{}).name||'gate')} gate code')">Save the QR code as an image</button>
+    <button class="btn ghost" onclick="copyLink()">Copy the link</button>
+    <p class="sheetnote"><b>${g.use_count || 0}</b> ${(g.use_count === 1) ? 'person has' : 'people have'} inducted through this code.
+      ${g.last_used_at ? 'Last used ' + new Date(g.last_used_at).toLocaleString('en-GB') + '.' : ''}</p>
+    <button class="btn ghost" onclick="revokeGate('${g.id}')">Withdraw and reprint</button>
+    <button class="btn ghost" onclick="closeSheet()">Done</button>`);
+  drawQR(url);
+}
+
+async function revokeGate(id){
+  if (!confirm('Withdraw this gate code?\n\nEvery poster already printed stops working immediately. You will need to print the new one and replace them.')) return;
+  try {
+    await CLOUD.updateInvite(id, { revoked_at: new Date().toISOString() });
+    closeSheet(); await openVisitors();
+    toast('Withdrawn — create a new code and reprint');
+  } catch(e){ toast(String(e.message||e).slice(0,110)); }
+}
+
+/* A4, black on white, and readable from a couple of feet away in daylight. */
+function printGate(){
+  const g = gateCode(); if (!g) return;
+  const s = state.site || {};
+  const box = document.getElementById('qrbox');
+  const svg = box ? box.innerHTML : '';
+  const w = window.open('', '_blank');
+  if (!w){ toast('Allow pop-ups to print the notice'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8">
+    <title>Site induction — ${esc(s.name||'')}</title>
+    <style>
+      @page { size: A4 portrait; margin: 14mm; }
+      body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+             text-align:center; color:#14171A; margin:0; }
+      .band { background:#FFD400; padding:14px; font-weight:800;
+              font-size:30px; letter-spacing:.5px; }
+      h1 { font-size:40px; margin:26px 0 6px; line-height:1.1; }
+      .sub { font-size:21px; color:#444; margin:0 0 22px; }
+      .qr { width:104mm; height:104mm; margin:0 auto; }
+      .qr svg { width:100%; height:100%; }
+      ol { text-align:left; max-width:150mm; margin:24px auto 0; font-size:19px; line-height:1.6; }
+      .foot { margin-top:26px; font-size:15px; color:#666; }
+      strong { font-size:22px; }
+    </style></head><body>
+    <div class="band">SITE INDUCTION REQUIRED</div>
+    <h1>${esc(s.name||'')}</h1>
+    <p class="sub">${esc([s.ref, s.address].filter(Boolean).join(' · '))}</p>
+    <div class="qr">${svg}</div>
+    <ol>
+      <li>Point your phone camera at the code above.</li>
+      <li>Tap the link that appears.</li>
+      <li>Read the induction, answer the questions, take a photo and sign.</li>
+      <li><strong>Then find the site manager before you start work.</strong></li>
+    </ol>
+    <p class="foot">No app and no account needed. If your phone will not scan it or
+      will not take a photo, find the site manager and they will induct you.<br>
+      SiteCheck &middot; WRM</p>
+    </body></html>`);
+  w.document.close();
+  setTimeout(() => { w.focus(); w.print(); }, 350);
+}
+
+/* ---- inducting somebody by hand ------------------------------------------
+   The fallback. Old handset, dead battery, cracked camera, no signal on their
+   network — none of which should stop a bricklayer starting work. The site
+   manager takes the photo on their own device instead. */
+function manualInduct(){
+  if (!state.site){ toast('Pick a project first'); return; }
+  openSheet('Induct someone yourself', `
+    <p class="sheetnote">For when their phone cannot do it. You are signing to say
+      you took them through the induction and that this is them.</p>
+    <div class="q"><label class="qt" for="m_name">Their name</label>
+      <input type="text" id="m_name" style="text-transform:uppercase"></div>
+    <div class="q"><label class="qt" for="m_company">Company they work for</label>
+      <input type="text" id="m_company"></div>
+    <div class="q"><label class="qt" for="m_phone">Mobile number</label>
+      <input type="tel" id="m_phone" inputmode="tel"></div>
+    <div class="q"><label class="qt">Photo of them, taken now</label>
+      <input type="file" id="m_selfie" accept="image/*" capture="environment"
+             onchange="mPickSelfie(this)">
+      <div id="m_selfiebox" style="padding-top:10px"></div></div>
+    <button class="btn go" id="m_go" onclick="saveManualInduction()">Record the induction</button>
+    <button class="btn ghost" onclick="closeSheet()">Cancel</button>`);
+}
+
+let M_SELFIE = null;
+async function mPickSelfie(input){
+  const f = input.files && input.files[0];
+  const box = document.getElementById('m_selfiebox');
+  if (!f){ M_SELFIE = null; if (box) box.innerHTML = ''; return; }
+  if (box) box.innerHTML = '<small>Preparing…</small>';
+  try {
+    M_SELFIE = await shrinkImage(f, 900, 0.7);
+    if (box) box.innerHTML = `<img src="${M_SELFIE}" alt="" style="max-width:150px;border-radius:10px">`;
+  } catch(e){ M_SELFIE = null; if (box) box.innerHTML = '<small>Could not read that photo</small>'; }
+}
+
+function shrinkImage(file, max, q){
+  return new Promise((ok, no) => {
+    const r = new FileReader();
+    r.onerror = () => no(new Error('Could not read that photo'));
+    r.onload = () => {
+      const img = new Image();
+      img.onerror = () => no(new Error('Could not read that photo'));
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > max || h > max){
+          if (w > h){ h = Math.round(h * max / w); w = max; }
+          else      { w = Math.round(w * max / h); h = max; }
+        }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        ok(c.toDataURL('image/jpeg', q));
+      };
+      img.src = r.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+async function saveManualInduction(){
+  const v = k => (document.getElementById(k)||{}).value || '';
+  const name = v('m_name').trim().toUpperCase();
+  const company = v('m_company').trim();
+  const phone = v('m_phone').trim();
+  if (!name){ toast('Enter their name'); return; }
+  if (!company){ toast('Enter the company they work for'); return; }
+  if (!M_SELFIE){ toast('Take a photo of them'); return; }
+
+  const btn = document.getElementById('m_go');
+  if (btn){ btn.disabled = true; btn.textContent = 'Recording…'; }
+  try {
+    const g = gateCode();
+    if (!g) throw new Error('Create the gate code for this project first');
+    // Goes through the same endpoint as a scan, so it lands as the same kind
+    // of record and nothing has to know about two routes. Who recorded it is
+    // the difference, and that is on the record.
+    const res = await fetch(CLOUD.functionUrl('induct'), {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json',
+                apikey: CLOUD.publicKey(), Authorization: 'Bearer ' + CLOUD.publicKey() },
+      body: JSON.stringify({
+        action:'induction', token: g.token,
+        answers: MANUAL_ANSWERS(),
+        signature: BLANK_SIG,
+        signedBy: name,
+        visitor: { company, phone },
+        selfie: M_SELFIE,
+        recordedBy: (state.profile && state.profile.full_name) || 'site manager',
+      }),
+    });
+    const out = await res.json().catch(()=>null);
+    if (!res.ok || (out && out.error)) throw new Error((out && out.error) || 'Could not record it');
+    M_SELFIE = null;
+    closeSheet();
+    toast('Inducted — recorded as ' + (out.ref || ''));
+  } catch(e){
+    toast(String(e.message||e).slice(0,110));
+    if (btn){ btn.disabled = false; btn.textContent = 'Record the induction'; }
+  }
+}
+
+// Every confirmation ticked, because the manager has just been through them
+// out loud with the person standing in front of them.
+function MANUAL_ANSWERS(){
+  const f = (typeof FORMS !== 'undefined' ? FORMS : []).find(x => x.id === 'f06');
+  const a = {};
+  if (f) f.sections.forEach(s => s.items.forEach(it => {
+    if (it.type === 'check') a[it.id] = { v: 'pass' };
+  }));
+  return a;
+}
+
+// A signature is required by the endpoint. A manual induction has no
+// signature from the visitor — the manager's name on the record is the
+// attestation — so this stands in for one and says so.
+const BLANK_SIG = (() => {
+  const c = document.createElement('canvas');
+  c.width = 420; c.height = 90;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, 420, 90);
+  x.fillStyle = '#14171A'; x.font = '16px system-ui, sans-serif';
+  x.fillText('Inducted in person by the site manager', 14, 50);
+  return c.toDataURL('image/png');
+})();
 
 /* ---- the link, the QR code, and what to do with them ---------------------- */
 function inviteMenu(id){

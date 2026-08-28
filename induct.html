@@ -97,6 +97,54 @@ const esc = s => String(s??'').replace(/[&<>"']/g, c =>
 
 let TOKEN = '', INFO = null, ANS = {}, SIG = null, FILES = [];
 let OPENED = [], PACKREAD = false;
+let GATE = false, SELFIE = null;
+
+/* ---- the photo -----------------------------------------------------------
+   Site gates are usually the worst signal on a job, and a modern phone camera
+   produces something like 4MB. Shrinking it here rather than sending it whole
+   is the difference between an upload that finishes and one that does not. */
+const SELFIE_MAX = 900, SELFIE_Q = 0.7;
+
+function shrink(file){
+  return new Promise((ok, no) => {
+    const r = new FileReader();
+    r.onerror = () => no(new Error('Could not read that photo'));
+    r.onload = () => {
+      const img = new Image();
+      img.onerror = () => no(new Error('Could not read that photo'));
+      img.onload = () => {
+        let { width: w, height: h } = img;
+        if (w > SELFIE_MAX || h > SELFIE_MAX){
+          if (w > h){ h = Math.round(h * SELFIE_MAX / w); w = SELFIE_MAX; }
+          else      { w = Math.round(w * SELFIE_MAX / h); h = SELFIE_MAX; }
+        }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        ok(c.toDataURL('image/jpeg', SELFIE_Q));
+      };
+      img.src = r.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+async function pickSelfie(input){
+  const f = input.files && input.files[0];
+  const box = document.getElementById('selfiebox');
+  if (!f){ SELFIE = null; if (box) box.innerHTML = ''; return; }
+  if (box) box.innerHTML = '<small>Preparing the photo…</small>';
+  try {
+    SELFIE = await shrink(f);
+    if (box) box.innerHTML =
+      `<img src="${SELFIE}" alt="" style="max-width:150px;border-radius:10px;display:block">
+       <small>Tap the button above to take it again.</small>`;
+  } catch(e){
+    SELFIE = null;
+    if (box) box.innerHTML = '<small>That photo would not open. Try again, or ask the site manager to induct you.</small>';
+    toast(e.message);
+  }
+}
 
 function toast(t){
   const el = document.createElement('div');
@@ -176,6 +224,34 @@ function draw(){
                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic" onchange="pickFiles(this)">
         <div class="files" id="filelist"></div>
         <button class="btn ghost" id="upbtn" onclick="sendRams()">Send these files</button>
+      </div>`;
+  }
+
+  if (wantsInduction && GATE){
+    // Nobody sent this person a link, so nothing about them is known. Ask
+    // before the induction rather than after, so the photo is taken while
+    // they are still standing at the gate rather than sitting in a van.
+    html += `<h2>Who are you?</h2>
+      <div class="card">
+        <p class="guide">The site manager needs to know who is on site today.</p>
+        <div style="padding:10px 0">
+          <label class="qt" for="g_company">Company you work for</label>
+          <input type="text" id="g_company" autocomplete="organization">
+        </div>
+        <div style="padding:10px 0">
+          <label class="qt" for="g_phone">Mobile number</label>
+          <input type="tel" id="g_phone" autocomplete="tel" inputmode="tel">
+        </div>
+        <div style="padding:10px 0">
+          <label class="qt">Photo of you, taken now</label>
+          <p class="guide">This is how the site manager checks who signed in. Face
+            the camera, somewhere with a bit of light.</p>
+          <input type="file" id="g_selfie" accept="image/*" capture="user"
+                 onchange="pickSelfie(this)">
+          <div id="selfiebox" style="padding-top:10px"></div>
+        </div>
+        <p class="guide">If your phone will not take a photo, go and find the site
+          manager — they can induct you themselves.</p>
       </div>`;
   }
 
@@ -330,16 +406,35 @@ async function submit(){
     return;
   }
 
+  // Checked here as well as on the server so somebody at a gate in the rain
+  // gets told what is missing before waiting on an upload to fail.
+  let visitor = null;
+  if (GATE){
+    const company = (($('#g_company')||{}).value || '').trim();
+    const phone   = (($('#g_phone')||{}).value   || '').trim();
+    if (!company){ toast('Enter the company you work for'); $('#g_company').focus(); return; }
+    if (!phone){ toast('Enter a mobile number'); $('#g_phone').focus(); return; }
+    if (!SELFIE){
+      toast('Take a photo so the site manager knows who signed in');
+      const s = $('#g_selfie'); if (s) s.scrollIntoView({ behavior:'smooth', block:'center' });
+      return;
+    }
+    visitor = { company, phone };
+  }
+
   const btn = $('#done'); btn.disabled = true; btn.textContent = 'Sending…';
   try {
     const sig = $('#pad').toDataURL('image/png');
     const r = await call('induction', {
       answers: ANS, signature: sig, signedBy: name.toUpperCase(),
       packRead: PACKREAD, opened: OPENED,
+      visitor, selfie: GATE ? SELFIE : null,
     });
     stop('ok', 'Thank you — that is your induction done',
       'It has been sent to ' + INFO.project.name + ' and recorded as ' + (r.ref||'') +
-      '. There is nothing else you need to do. This link will not work again.');
+      '. There is nothing else you need to do. ' + (GATE
+        ? 'Go and see the site manager before you start work.'
+        : 'This link will not work again.'));
   } catch(e){
     toast(e.message);
     btn.disabled = false; btn.textContent = 'Done — send my induction';
@@ -360,6 +455,7 @@ async function submit(){
     stop('bad','This link cannot be opened', e.message);
     return;
   }
+  GATE = INFO.kind === 'gate';
   if (INFO.done){
     stop('ok','Already completed',
       'This induction has been filled in and signed. There is nothing else to do.');

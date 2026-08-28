@@ -462,6 +462,12 @@ const CLOUD = (() => {
     listShares, share, unshare,
     listContractors, saveContractor, removeContractor,
     listInvites, createInvite, updateInvite, makeToken,
+    // The manual induction fallback posts to the same public endpoint a
+    // visitor's phone would, so one code path writes inductions rather than
+    // two that can drift apart. The URL and the publishable key live in here,
+    // so they are handed out rather than copied into the app.
+    functionUrl: n => URL + '/functions/v1/' + n,
+    publicKey: () => KEY,
     uploadDocument, listDocuments, documentUrl, deleteDocument, moveDocument,
     auditFor, deviceId, online,
     sendToPortal, portalStateFor,
