@@ -12,22 +12,25 @@ This is a **separate app** from the single-device version. Both can run at once.
 
 ### 1. Fix your own password
 
-Your Supabase account was created with a password you typed by hand. The app
-derives passwords from the User ID and PIN, so it needs changing to match.
+Sign-in is a User ID and a password of your own choosing — at least 10
+characters, no rules about capitals or symbols. The password is held by
+Supabase as a salted hash: not readable by the app, by a superuser, or by
+anyone with the database open in front of them.
 
-In Supabase: **Authentication → Users**, click your user, and set the password to:
+The first account is the only one that has to be set up by hand. In Supabase:
+**Authentication → Users**, click your user, and set a password of at least 10
+characters. You then sign in to the app with User ID `PougherG` and that
+password.
 
-```
-pougherg#12345
-```
+Everyone after you is created from inside the app, and nothing needs touching
+in Supabase again.
 
-replacing `12345` with the 5-digit PIN you want. The rule is always:
-
-```
-<userid in lowercase>#<pin>
-```
-
-You will then sign in to the app with User ID `PougherG` and that PIN.
+> **Up to August 2026** the password was derived from a five-digit PIN —
+> literally `<userid in lowercase>#<pin>`, so five digits was the whole secret.
+> An account that has not been moved over yet can still sign in with its old
+> PIN exactly once, and the app then makes that person choose a password before
+> it will show them anything. Nothing needs migrating; it empties itself out as
+> people sign in.
 
 ### 2. Upload the files
 
@@ -68,9 +71,14 @@ app. It checks on every call that you are signed in *and* that your profile
 says superuser, so the app cannot be talked into creating an account.
 
 **Then add people in the app.** People → Add a person. Set their User ID, name,
-role and a 5-digit PIN, and they can sign in immediately. The PIN is shown once
-afterwards so you can pass it on — it is not recoverable later, though you can
-set a new one at any time.
+role and a temporary password — "Suggest one" produces something readable down
+the phone — and they can sign in immediately. It is shown once afterwards so
+you can pass it on.
+
+That password works once: the app then makes them choose their own, which you
+will not be able to see. If somebody forgets theirs, nobody can look it up —
+open their account and set them another temporary one, which puts them back
+through the same screen.
 
 Accounts are never deleted, only deactivated, so a name stays readable on
 every record it signed.
@@ -118,7 +126,7 @@ shows how many items are waiting. When signal returns it syncs on its own.
 
 In this order:
 
-1. **Sign in** as `PougherG` with your PIN
+1. **Sign in** as `PougherG` with your password
 2. **Create a project** — check it appears in Supabase → Table Editor → projects
 3. **Complete a short form** and sign it — check the header says "Synced"
 4. **Open the app on your phone**, sign in as the same user, and confirm the
@@ -139,9 +147,17 @@ the schema, but the environment it was built in could not reach Supabase, so
 every path above needs walking through for real. Expect something to need
 fixing on the first run — send the error and it will be quick to sort.
 
-**A 5-digit PIN is not strong.** It is fine for a demo with invented data.
-Before real records go in, this wants proper device enrolment: a longer one-time
-code to set a device up, then the PIN unlocking it locally.
+**There is no self-service password reset.** User IDs map to made-up addresses
+at `wrm.internal`, so Supabase has nowhere to send a reset email. Somebody who
+forgets their password has to ask a superuser to set them a temporary one. Real
+email addresses would fix this, and would want doing before this is relied on
+by people who cannot easily reach you.
+
+**Signing in is the only lock.** Once signed in, the app stays signed in on
+that device until somebody signs out. If a site phone is shared or goes
+missing, the account on it is open. A local unlock PIN on top of the password —
+banking-app style, where the password is the real credential and the PIN only
+re-opens the app on that one handset — is the thing to add if that matters.
 
 **Free tier projects pause after about a week of inactivity.** Open the app
 every few days, and restore the project from the Supabase dashboard on the

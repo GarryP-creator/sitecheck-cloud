@@ -33,39 +33,194 @@ const CLOUD = (() => {
     return sb;
   }
 
-  /* --- User ID and PIN ---------------------------------------------------
-     Supabase wants an email and a password. People on site want a name and a
-     keypad. So the address is generated from the User ID, and the password is
-     derived from the PIN with the User ID mixed in — two people who both pick
-     12345 do not end up with the same password.                          */
+  /* --- User ID and password ----------------------------------------------
+     Supabase wants an email address. People on site have a User ID. So the
+     address is generated from the User ID and never typed by anyone.
+
+     The password is now the person's own, held by Supabase as a salted hash
+     and never seen by this app or by a superuser.
+
+     Until August 2026 it was not: a five-digit PIN was mixed with the User ID
+     to make a password, which meant anyone who knew the scheme needed only
+     five digits. legacyPassFor reproduces that so an account that has not
+     been moved over yet can still get in once — see signIn.             */
   const emailFor = id => `${String(id).trim().toLowerCase()}@${DOMAIN}`;
-  const passFor  = (id, pin) => `${String(id).trim().toLowerCase()}#${pin}`;
+  const legacyPassFor = (id, pin) => `${String(id).trim().toLowerCase()}#${pin}`;
 
   const validId = id => /^[A-Za-z0-9._-]{3,32}$/.test(String(id || '').trim());
 
+  /* --- what makes an acceptable password ---------------------------------
+     Length first, composition rules not at all. Insisting on a capital, a
+     digit and a symbol produces Passw0rd! and a note on the hoarding; ten
+     characters of anything is harder to guess and easier to remember. What
+     is worth refusing is the handful of things people actually pick.
+
+     This runs in the browser so the screen can say what is wrong as it is
+     typed. It is NOT the enforcement — the same rules run again inside the
+     admin-users function, where they cannot be skipped.
+
+     Returns a sentence to show the person, or null if the password is fine. */
+  const BANNED = [
+    'password','passw0rd','pa55word','sitecheck','wrm','workplace','letmein',
+    'welcome','qwerty','qwertyuiop','asdfgh','zxcvbn','iloveyou','monkey',
+    'dragon','football','liverpool','manchester','arsenal','chelsea','rangers',
+    'celtic','admin','changeme','trustno1','sunshine','princess','superman',
+    'scaffold','hardhat','builder','construction',
+  ];
+
+  // Four or more characters running in order, up or down: 1234, 4321, abcd.
+  function hasRun(s, len){
+    let up = 1, down = 1;
+    for (let i = 1; i < s.length; i++){
+      const d = s.charCodeAt(i) - s.charCodeAt(i-1);
+      up   = d ===  1 ? up + 1 : 1;
+      down = d === -1 ? down + 1 : 1;
+      if (up >= len || down >= len) return true;
+    }
+    return false;
+  }
+
+  function pwProblem(pw, userId){
+    const p = String(pw == null ? '' : pw);
+    if (!p) return 'Enter a password';
+    if (p !== p.trim()) return 'It cannot start or end with a space';
+    if (p.length < 10) return `At least 10 characters — ${p.length} so far`;
+    if (p.length > 72) return 'That is too long — 72 characters at most';
+    if (/^\d+$/.test(p)) return 'Not all numbers — that is only a longer PIN';
+
+    const low = p.toLowerCase();
+    const id  = String(userId || '').trim().toLowerCase();
+    if (id.length >= 3 && low.includes(id)) return 'Do not put your User ID in it';
+
+    const hit = BANNED.find(b => low.includes(b));
+    if (hit) return `“${hit}” is one of the first things anyone would try`;
+
+    /* What these two are for is aaaaaaaaaa and abababababab, not an honest run
+       of words — "allsmalllettersok" has lll in it and is a perfectly good
+       password. So this counts variety rather than banning a repeat. */
+    if (new Set(low).size < 5) return 'Too few different characters — mix it up a bit more';
+    if (/(.)\1{3,}/.test(p))   return 'Do not repeat one character four times over';
+    if (hasRun(low, 4))        return 'Do not use a run like 1234 or abcd';
+    return null;
+  }
+
+  /* A temporary password for a superuser to hand over. Three ordinary words
+     and a number: long enough to pass the rules above, and short enough to
+     read down the phone without spelling it out. It is temporary either way —
+     the person is made to replace it the first time they sign in.        */
+  const WORDS = ('timber gravel ladder beacon harbour kestrel meadow anvil copper ' +
+    'bramble cobalt dovetail quarry thistle lantern granite willow mallet ' +
+    'furlong pebble rafter saffron tundra walnut bracken cinder dapple ' +
+    'elmwood flagon gantry hollow ingot jetty kindle lintel marlow nutmeg ' +
+    'oakum parcel quiver ridge sorrel tiller upland vellum wicket yarrow').split(' ');
+
+  function suggestPassword(){
+    const r  = n => { const b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] % n; };
+    const w  = () => { const x = WORDS[r(WORDS.length)]; return x[0].toUpperCase() + x.slice(1); };
+    const pick = [];
+    while (pick.length < 3){ const x = w(); if (!pick.includes(x)) pick.push(x); }
+    return pick.join('-') + '-' + (10 + r(90));
+  }
+
+  /* --- has this person set a password of their own? ----------------------
+     Recorded against the Supabase login as pw_set_at, not in the profiles
+     table, for one reason: a person can always write to their own login, so
+     setting a password and clearing the flag happen in the same call and
+     cannot come apart. No table permission is involved.
+
+     Nobody had the mark before this change, so every account that still has
+     a PIN-derived password is caught without anything having to be migrated. */
+  const hasOwnPassword = u => !!(u && u.user_metadata && u.user_metadata.pw_set_at);
+  let pwKnownGood = true;
+
+  /* True when we know they are still on a PIN and can do something about it.
+     Offline it stays false: there is no way to set a password with no signal,
+     so blocking the app would strand someone on site for no gain. */
+  const needsPassword = () => !pwKnownGood && navigator.onLine;
+
   /* --- signing in --------------------------------------------------------- */
-  async function signIn(userId, pin){
+  async function signIn(userId, password){
     const c = client();
     if (!c) throw new Error('offline');
-    const { data, error } = await c.auth.signInWithPassword({
-      email: emailFor(userId), password: passFor(userId, pin),
-    });
-    if (error) throw error;
+    const email = emailFor(userId);
+
+    let res = await c.auth.signInWithPassword({ email, password });
+    let viaPin = false;
+
+    /* Not moved over yet? Five digits may still be their old PIN. Accept it,
+       but remember how they got in — afterLogin sends them straight to the
+       password screen and nowhere else. */
+    if (res.error && /^\d{5}$/.test(String(password || ''))){
+      const retry = await c.auth.signInWithPassword({
+        email, password: legacyPassFor(userId, password),
+      });
+      if (!retry.error){ res = retry; viaPin = true; }
+    }
+    if (res.error) throw res.error;
 
     const { data: p, error: pe } = await c.from('profiles')
-      .select('*').eq('id', data.user.id).single();
+      .select('*').eq('id', res.data.user.id).single();
     if (pe) throw new Error('Signed in, but no profile found. Ask a superuser to finish setting up this account.');
     if (!p.active) { await c.auth.signOut(); throw new Error('This account has been deactivated.'); }
+
+    pwKnownGood = !viaPin && hasOwnPassword(res.data.user);
+    await DB.set('pwOk', pwKnownGood);
 
     profile = p;
     await DB.set('profile', p);
     return p;
   }
 
+  /* --- setting a password ------------------------------------------------
+     The password and the mark are written in one call, so there is no state
+     where one has happened and the other has not.
+
+     currentPw is asked for when somebody is changing a working password of
+     their own accord. It is not asked for on the forced screen, because they
+     proved who they were seconds earlier to reach it.                    */
+  async function changePassword(newPw, currentPw){
+    const c = client(); if (!c) throw new Error('You need a connection');
+    if (!profile) throw new Error('Not signed in');
+
+    const problem = pwProblem(newPw, profile.user_id);
+    if (problem) throw new Error(problem);
+
+    if (currentPw != null){
+      const check = await c.auth.signInWithPassword({
+        email: emailFor(profile.user_id), password: currentPw,
+      });
+      if (check.error) throw new Error('That is not your current password');
+    }
+
+    const { error } = await c.auth.updateUser({
+      password: newPw,
+      data: { pw_set_at: new Date().toISOString() },
+    });
+    if (error){
+      /* Supabase can be set to demand a freshly proved identity before a
+         password changes. Somebody who has been signed in for weeks has not
+         got one, and the message it returns says "reauthentication" — which
+         means nothing to a site manager. Say what to do instead. */
+      const m = String(error.message || '');
+      if (/reauthenticat|nonce|session.*expired/i.test(m)){
+        throw new Error('Sign out and sign back in, then change it — this has been left too long since you last signed in.');
+      }
+      /* Supabase enforces its own minimum length as well. Ours is longer, so
+         this should be unreachable; if it ever fires, say it plainly. */
+      if (/password/i.test(m) && /short|least|weak/i.test(m)) throw new Error(m);
+      throw error;
+    }
+
+    pwKnownGood = true;
+    await DB.set('pwOk', true);
+  }
+
   async function signOut(){
     stopLive();
     profile = null;
+    pwKnownGood = true;
     await DB.del('profile');
+    await DB.del('pwOk');
     const c = client();
     if (c) try { await c.auth.signOut(); } catch(e){}
   }
@@ -74,11 +229,20 @@ const CLOUD = (() => {
      cached on the device, so the app opens straight into their projects. */
   async function restore(){
     profile = await DB.get('profile');
+    pwKnownGood = (await DB.get('pwOk')) !== false;
     const c = client();
     if (c && navigator.onLine){
       try {
         const { data } = await c.auth.getSession();
         if (!data.session) { profile = null; await DB.del('profile'); }
+        else {
+          /* Someone who was already signed in when this change went out has
+             never seen the password screen. The session says whether they
+             have set one, so they are caught here rather than at the login
+             screen they are not going to visit. */
+          pwKnownGood = hasOwnPassword(data.session.user);
+          await DB.set('pwOk', pwKnownGood);
+        }
       } catch(e){ /* offline or unreachable — keep the cached profile */ }
     }
     return profile;
@@ -268,10 +432,13 @@ const CLOUD = (() => {
     return data;
   }
 
-  const createUser  = (userId, pin, fullName, email, role, sendWelcome) =>
-    callAdmin({ action:'create', userId, pin, fullName, email, role, sendWelcome:!!sendWelcome });
-  const setPin      = (id, userId, pin) => callAdmin({ action:'setpin', id, userId, pin });
-  const setActive   = (id, active)      => callAdmin({ action:'setactive', id, active });
+  const createUser  = (userId, password, fullName, email, role, sendWelcome) =>
+    callAdmin({ action:'create', userId, password, fullName, email, role, sendWelcome:!!sendWelcome });
+  /* A superuser can reset somebody to a temporary password but cannot read the
+     one they are using — the function only writes. Resetting also clears the
+     pw_set_at mark, so the person is made to choose again. */
+  const setPassword = (id, userId, password) => callAdmin({ action:'setpassword', id, userId, password });
+  const setActive   = (id, active)           => callAdmin({ action:'setactive', id, active });
 
   /* --- welcome email ------------------------------------------------------
      The wording lives in the database, not in this file, so it can be changed
@@ -280,7 +447,7 @@ const CLOUD = (() => {
   const getEmailSettings  = ()          => callAdmin({ action:'settings' });
   const saveEmailSettings = (s)         => callAdmin({ action:'savesettings', ...s });
   const testEmail         = (s)         => callAdmin({ action:'testmail', ...s });
-  const sendWelcome       = (id, userId, pin) => callAdmin({ action:'welcome', id, userId, pin });
+  const sendWelcome       = (id, userId, password) => callAdmin({ action:'welcome', id, userId, password });
 
   /* --- the client portal --------------------------------------------------
      Handing a signed record over to WRM's client portal. The app only ever
@@ -453,11 +620,12 @@ const CLOUD = (() => {
   const online = () => navigator.onLine && !!client();
 
   return {
-    client, emailFor, passFor, validId,
+    client, emailFor, validId,
+    pwProblem, suggestPassword, needsPassword, changePassword,
     signIn, signOut, restore, me, isSuper, canMakeProjects,
     pullProjects, saveProject, pushRecord, pullRecords, flush,
     startLive, stopLive,
-    listUsers, saveProfile, createUser, setPin, setActive,
+    listUsers, saveProfile, createUser, setPassword, setActive,
     getEmailSettings, saveEmailSettings, testEmail, sendWelcome,
     listShares, share, unshare,
     listContractors, saveContractor, removeContractor,

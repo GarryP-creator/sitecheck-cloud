@@ -410,12 +410,28 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
   margin:0 auto 30px;max-width:17em;position:relative;padding-top:20px}
 .login .strap::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
   width:34px;height:3px;background:var(--hivis)}
-.pins{display:flex;gap:12px;justify-content:center;margin-bottom:22px}
-.pins i{width:16px;height:16px;border-radius:50%;border:2px solid #5B6068;display:block}
-.pins i.on{background:var(--hivis);border-color:var(--hivis)}
-.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.pad button{background:#22262B;border:1px solid #363B41;color:#fff;border-radius:4px;padding:19px 0;font-size:22px;font-weight:700}
-.pad button:active{background:var(--hivis);border-color:var(--hivis);color:var(--ink)}
+/* password box on the dark screens: the input, and the show/hide beside it */
+.pwrow{position:relative;margin-bottom:8px}
+.pwrow input{padding-right:62px;margin-bottom:0;text-align:left;
+  font-family:var(--mono);letter-spacing:.06em}
+.pwrow .peek{position:absolute;right:4px;top:4px;bottom:4px;padding:0 12px;
+  background:transparent;border:0;color:#8D939A;font-size:10px;font-weight:800;
+  letter-spacing:.14em;text-transform:uppercase}
+.pwrow .peek:active{color:var(--hivis)}
+.pwhint{min-height:17px;margin:0 0 18px;font-size:12px;font-weight:600;color:#8D939A;text-align:left}
+.pwhint.bad{color:#FFB0A0}
+.pwhint.ok{color:#8FD6A0}
+/* On the dark screens the usual primary button is ink on ink — invisible.
+   Hi-vis on ink is both legible and the right look for this app. */
+.login .btn{margin-top:4px}
+.login .btn.primary{background:var(--hivis);color:var(--ink);font-weight:800}
+.login .btn.primary:disabled{background:#3A3F45;color:#8D939A}
+.login .helper{text-align:center;color:#6B7178;font-size:12px;line-height:1.5;margin:22px 0 0}
+.login .helper b{color:#8D939A}
+.login .rule{border:0;border-top:1px solid #2A2E33;margin:26px 0 20px}
+.pwwhy{background:#22262B;border-left:3px solid var(--hivis);padding:12px 14px;
+  margin:0 0 22px;color:#C9CDD2;font-size:13px;line-height:1.5;text-align:left}
+.pwwhy b{color:#fff;display:block;margin-bottom:3px}
 
 /* search */
 .searchbar{position:relative;margin-bottom:4px}
@@ -610,7 +626,7 @@ function installHint(){
   </div>`;
 }
 
-const state = { view:'login', pin:'', uid:'', loginMsg:'', fails:0, lockUntil:0,
+const state = { view:'login', uid:'', loginMsg:'', setPwMsg:'', fails:0, lockUntil:0,
                 profile:null, form:null, answers:{}, record:null, sig:'',
                 site:null, projects:[], records:[], filter:null, q:'', editing:null,
                 syncing:false, pendingCount:0, users:[], shares:[], docs:[], audit:[],
@@ -645,7 +661,11 @@ async function boot(){
     !has('TALKS')      ? 'talks.js' : null,
     !has('ACTIVITIES') ? 'activities.js' : null,
     !has('METHODS')    ? 'methods.js' : null,
-    !has('CLOUD')      ? 'cloud.js' : null,
+    // changePassword is named rather than just CLOUD, because the likeliest
+    // bad state on a phone is a cached cloud.js from before passwords next to
+    // a fresh index.html that expects them. That produces a crash on the
+    // password screen; this turns it into the toast below.
+    !has('CLOUD')      || typeof CLOUD.changePassword !== 'function' ? 'cloud.js' : null,
     !has('DB')         ? 'db.js' : null,
     typeof window.supabase === 'undefined' ? 'lib/supabase.js' : null,
   ].filter(Boolean);
@@ -657,10 +677,17 @@ async function boot(){
   const prof = await CLOUD.restore();
   if (prof){
     state.profile = prof;
-    state.view = state.site ? 'home' : 'projects';
-    render();
-    syncNow(true);
-    CLOUD.startLive(onLiveChange);
+    /* Signed in since before passwords existed. They never see the login
+       screen, so the gate has to be here as well. */
+    if (CLOUD.needsPassword()){
+      state.view = 'setpw';
+      render();
+    } else {
+      state.view = state.site ? 'home' : 'projects';
+      render();
+      syncNow(true);
+      CLOUD.startLive(onLiveChange);
+    }
   } else {
     state.view = 'login';
     render();
@@ -729,6 +756,9 @@ function render(){
   closeAccount();
   const v = state.view;
   if (v==='login') return $('#app').innerHTML = viewLogin();
+  // No app shell on this one, by design: there is nothing to navigate to
+  // until a password is set, and a header with a menu would imply otherwise.
+  if (v==='setpw') return $('#app').innerHTML = viewSetPw();
   let body;
   if (v==='home')     body = viewHome();
   if (v==='list')     body = viewList();
@@ -805,12 +835,16 @@ function paintSync(){
 }
 
 /* ---- login ------------------------------------------------------------
-   User ID above, keypad below. Five digits, then it signs in. Wrong PIN
-   five times and it locks for a few minutes — a keypad is easy to guess
-   at otherwise.                                                        */
+   User ID and password. Five wrong attempts and it locks for a few minutes,
+   which is what stops somebody working through a list of guesses.
+
+   Until August 2026 this was a five-digit keypad. It is kept working for one
+   sign-in per account — see signIn in cloud.js — and that sign-in can only
+   reach the screen that replaces it.                                    */
 function viewLogin(){
   const locked = state.lockUntil && state.lockUntil > Date.now();
   const wait = locked ? Math.ceil((state.lockUntil - Date.now()) / 1000) : 0;
+  const dis = locked ? 'disabled' : '';
   return `<div class="tape"></div><div class="lockwrap"><div class="login">
     <div class="mark">${logo("#FFD400","#14171A",16,30)}</div>
     <h2>SiteCheck</h2>
@@ -821,42 +855,53 @@ function viewLogin(){
     <input type="text" id="uid" class="uidbox" autocomplete="username"
            autocapitalize="none" autocorrect="off" spellcheck="false"
            placeholder="e.g. DaviesK" value="${esc(state.uid||'')}"
-           oninput="state.uid=this.value" ${locked?'disabled':''}>
+           oninput="state.uid=this.value" ${dis}>
 
-    <div class="pins">${[0,1,2,3,4].map(i=>`<i class="${state.pin.length>i?'on':''}"></i>`).join('')}</div>
-    ${locked ? `<p class="lockmsg">Too many attempts. Try again in ${wait}s.</p>` : ''}
-    <div class="pad">
-      ${[1,2,3,4,5,6,7,8,9].map(n=>`<button ${locked?'disabled':''} onclick="pin('${n}')">${n}</button>`).join('')}
-      <button ${locked?'disabled':''} onclick="pin('clear')" style="font-size:12px;letter-spacing:.1em">CLEAR</button>
-      <button ${locked?'disabled':''} onclick="pin('0')">0</button>
-      <button ${locked?'disabled':''} onclick="pin('del')" style="font-size:18px">&#9003;</button>
+    <label class="uid">Password</label>
+    <div class="pwrow">
+      <input type="password" id="pw" class="uidbox" autocomplete="current-password"
+             autocapitalize="none" autocorrect="off" spellcheck="false"
+             placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
+             onkeydown="if(event.key==='Enter')tryLogin()" ${dis}>
+      <button type="button" class="peek" onclick="peek('pw',this)" ${dis}>Show</button>
     </div>
-    <p class="sub" id="loginmsg" style="margin-top:24px;margin-bottom:0">
+
+    ${locked ? `<p class="lockmsg" style="margin-top:18px">Too many attempts. Try again in ${wait}s.</p>`
+             : '<div style="height:18px"></div>'}
+    <button class="btn primary" onclick="tryLogin()" ${dis}>Sign in</button>
+
+    <p class="sub" id="loginmsg" style="margin-top:22px;margin-bottom:0">
       ${state.loginMsg ? esc(state.loginMsg) : 'Works with no signal once you have signed in.'}</p>
+
+    <hr class="rule">
+    <p class="helper"><b>Forgotten your password?</b><br>
+      Nobody can look it up — it is not stored anywhere in readable form.
+      Ask a superuser to set you a temporary one.</p>
   </div></div>`;
 }
 
-async function pin(k){
-  if (state.lockUntil && state.lockUntil > Date.now()) return;
-  if(k==='clear') state.pin='';
-  else if(k==='del') state.pin = state.pin.slice(0,-1);
-  else if(state.pin.length<5) state.pin += k;
-  render();
-  const box = document.getElementById('uid');
-  if (box && document.activeElement !== box && state.uid) box.value = state.uid;
-  if(state.pin.length===5) await tryLogin();
+/* Show/hide. Worth having: a ten-character password typed with one thumb on
+   a wet screen gets mistyped, and a wrong attempt costs more than a glance. */
+function peek(id, btn){
+  const el = document.getElementById(id);
+  if (!el) return;
+  const hidden = el.type === 'password';
+  el.type = hidden ? 'text' : 'password';
+  btn.textContent = hidden ? 'Hide' : 'Show';
 }
 
 async function tryLogin(){
-  const id = (state.uid||'').trim();
-  const p  = state.pin;
-  state.pin = '';
+  const id = (state.uid || (document.getElementById('uid')||{}).value || '').trim();
+  const box = document.getElementById('pw');
+  const p = box ? box.value : '';
+  state.uid = id;
 
   if (!id){ state.loginMsg = 'Enter your User ID first'; render(); return; }
   if (!CLOUD.validId(id)){
     state.loginMsg = 'User IDs use letters, numbers, dots, hyphens or underscores';
     render(); return;
   }
+  if (!p){ state.loginMsg = 'Enter your password'; render(); return; }
 
   state.loginMsg = 'Checking…'; render();
   try {
@@ -869,13 +914,13 @@ async function tryLogin(){
     console.error('sign-in failed:', e);
     const msg = String(e && e.message || e);
 
-    // Only count it as a wrong PIN if that is genuinely what happened.
+    // Only count it as a wrong password if that is genuinely what happened.
     // Anything else is a fault worth naming, not a locked-out user.
-    const badPin = /invalid login|invalid_credentials|bad_jwt/i.test(msg);
+    const badPw = /invalid login|invalid_credentials|bad_jwt/i.test(msg);
 
     if (!navigator.onLine){
       state.loginMsg = 'No connection — the first sign-in needs signal';
-    } else if (!badPin){
+    } else if (!badPw){
       state.loginMsg = /permission denied|42501/i.test(msg)
         ? 'Signed in, but the database is refusing access. Check the setup script has been run.'
         : msg.slice(0, 90);
@@ -886,7 +931,7 @@ async function tryLogin(){
         state.loginMsg = 'Too many attempts — locked for 3 minutes';
         setTimeout(()=>{ state.lockUntil = 0; state.fails = 0; render(); }, 3*60*1000);
       } else {
-        state.loginMsg = `Wrong User ID or PIN (${5-state.fails} left)`;
+        state.loginMsg = `Wrong User ID or password (${5-state.fails} left)`;
       }
     }
     render();
@@ -895,19 +940,172 @@ async function tryLogin(){
 
 async function afterLogin(prof){
   state.profile = prof;
+
+  /* Still on a PIN, or on a temporary password a superuser handed over. They
+     get one screen and no app behind it until they have set their own. */
+  if (CLOUD.needsPassword()){
+    state.setPwMsg = '';
+    state.view = 'setpw';
+    render();
+    return;
+  }
+
   state.view = 'projects';
   render();
   await syncNow(true);
   CLOUD.startLive(onLiveChange);
 }
 
+/* ---- setting a password ------------------------------------------------
+   Reached two ways: straight after signing in with an old PIN or a handed-over
+   temporary password, and on opening the app if the person was already signed
+   in when this change went out. Either way there is no way past it except
+   setting a password or signing out.                                    */
+function viewSetPw(){
+  const who = (state.profile||{}).full_name || (state.profile||{}).user_id || '';
+  return `<div class="tape"></div><div class="lockwrap"><div class="login">
+    <div class="mark">${logo("#FFD400","#14171A",16,30)}</div>
+    <h2>Choose a password</h2>
+    <p class="by">cloud &middot; by <b>WRM</b></p>
+
+    <div class="pwwhy"><b>${esc(who)}</b>
+      SiteCheck has moved from five-digit PINs to proper passwords. Set yours
+      now and you will use it from here on. Nobody at WRM can see it.</div>
+
+    <label class="uid">New password</label>
+    <div class="pwrow">
+      <input type="password" id="np" class="uidbox" autocomplete="new-password"
+             autocapitalize="none" autocorrect="off" spellcheck="false"
+             placeholder="at least 10 characters" oninput="pwLive()">
+      <button type="button" class="peek" onclick="peek('np',this)">Show</button>
+    </div>
+    <p class="pwhint" id="nphint">Ten characters or more. Three words you will
+      remember beats one clever one.</p>
+
+    <label class="uid">Type it again</label>
+    <div class="pwrow">
+      <input type="password" id="np2" class="uidbox" autocomplete="new-password"
+             autocapitalize="none" autocorrect="off" spellcheck="false"
+             placeholder="the same again" oninput="pwLive()"
+             onkeydown="if(event.key==='Enter')saveNewPw()">
+      <button type="button" class="peek" onclick="peek('np2',this)">Show</button>
+    </div>
+    <p class="pwhint" id="np2hint">&nbsp;</p>
+
+    <button class="btn primary" id="np_save" onclick="saveNewPw()">Save and carry on</button>
+    <p class="sub" style="margin-top:20px;margin-bottom:0">
+      ${state.setPwMsg ? esc(state.setPwMsg) : 'Needs a connection — this one cannot wait for signal.'}</p>
+
+    <hr class="rule">
+    <p class="helper">Not you? <b>Sign out</b> and let the right person in.</p>
+    <button class="btn ghost" style="color:#8D939A;border-color:#3A3F45"
+            onclick="lock()">Sign out</button>
+  </div></div>`;
+}
+
+/* Says what is wrong while it is typed rather than after it is submitted. */
+function pwLive(){
+  const a = (document.getElementById('np')||{}).value || '';
+  const b = (document.getElementById('np2')||{}).value || '';
+  const h1 = document.getElementById('nphint');
+  const h2 = document.getElementById('np2hint');
+  const uid = (state.profile||{}).user_id || '';
+
+  if (h1){
+    const problem = a ? CLOUD.pwProblem(a, uid) : null;
+    h1.textContent = !a ? 'Ten characters or more. Three words you will remember beats one clever one.'
+                   : problem || 'That will do nicely.';
+    h1.className = 'pwhint' + (!a ? '' : problem ? ' bad' : ' ok');
+  }
+  if (h2){
+    h2.textContent = !b ? ' ' : (a === b ? 'Matches.' : 'These two do not match yet.');
+    h2.className = 'pwhint' + (!b ? '' : a === b ? ' ok' : ' bad');
+  }
+}
+
+async function saveNewPw(){
+  const a = (document.getElementById('np')||{}).value || '';
+  const b = (document.getElementById('np2')||{}).value || '';
+  const uid = (state.profile||{}).user_id || '';
+  const btn = document.getElementById('np_save');
+
+  const problem = CLOUD.pwProblem(a, uid);
+  if (problem){ toast(problem); return; }
+  if (a !== b){ toast('The two do not match'); return; }
+  if (!navigator.onLine){ toast('You need a connection to set a password'); return; }
+
+  if (btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    await CLOUD.changePassword(a);
+    state.setPwMsg = '';
+    toast('Password set — that is the one to use from now on');
+    state.view = 'projects';
+    render();
+    await syncNow(true);
+    CLOUD.startLive(onLiveChange);
+  } catch(e){
+    console.error('could not set password:', e);
+    state.setPwMsg = String(e.message || e).slice(0, 110);
+    render();
+  }
+}
+
+/* Changing a working password, by choice, from the account menu. Asks for the
+   current one: otherwise an unattended unlocked phone is enough to take an
+   account over. */
+function openChangePw(){
+  openSheet('Change your password', `
+    <div class="q"><label class="qt">Current password</label>
+      <input type="password" id="cp_old" autocomplete="current-password"
+             autocapitalize="none" autocorrect="off"></div>
+
+    <div class="q"><label class="qt">New password</label>
+      <p class="guide">At least 10 characters. Not your User ID, and nothing
+        that reads like 1234 or aaa.</p>
+      <input type="password" id="cp_new" autocomplete="new-password"
+             autocapitalize="none" autocorrect="off"></div>
+
+    <div class="q"><label class="qt">Type the new one again</label>
+      <input type="password" id="cp_new2" autocomplete="new-password"
+             autocapitalize="none" autocorrect="off"></div>
+
+    <button class="btn go" id="cp_save" onclick="saveChangePw()">Change password</button>
+    <p class="sheetnote">You stay signed in on this device. Any other device you
+      are signed in on stays signed in too — sign out there if you want it
+      locked.</p>`);
+}
+
+async function saveChangePw(){
+  const v = id => (document.getElementById(id)||{}).value || '';
+  const oldPw = v('cp_old'), a = v('cp_new'), b = v('cp_new2');
+  const uid = (state.profile||{}).user_id || '';
+  const btn = document.getElementById('cp_save');
+
+  if (!oldPw){ toast('Enter your current password'); return; }
+  const problem = CLOUD.pwProblem(a, uid);
+  if (problem){ toast(problem); return; }
+  if (a !== b){ toast('The two new ones do not match'); return; }
+  if (a === oldPw){ toast('That is the password you already have'); return; }
+
+  if (btn){ btn.disabled = true; btn.textContent = 'Working…'; }
+  try {
+    await CLOUD.changePassword(a, oldPw);
+    closeSheet();
+    toast('Password changed');
+  } catch(e){
+    console.error(e);
+    toast(String(e.message || e).slice(0, 110));
+    if (btn){ btn.disabled = false; btn.textContent = 'Change password'; }
+  }
+}
+
 async function lock(){
   await CLOUD.signOut();
-  // clear the User ID as well as the PIN: leaving a name on screen tells the
-  // next person who to try, which is half of what they would need to guess.
+  // clear the User ID as well: leaving a name on screen tells the next person
+  // who to try, which is half of what they would need to guess.
   await DB.del('lastUid');
   state.profile = null;
-  state.pin = ''; state.uid = ''; state.loginMsg = '';
+  state.uid = ''; state.loginMsg = ''; state.setPwMsg = '';
   state.fails = 0; state.lockUntil = 0;
   state.view = 'login';
   render();
@@ -1802,9 +2000,15 @@ function toggleAccount(ev){
           <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/>
           <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
         Sync now</button>
+      <button role="menuitem" onclick="closeAccount();openChangePw()">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+          <rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+          <circle cx="12" cy="15.5" r="1.4"/></svg>
+        Change password</button>
       <button role="menuitem" class="danger" onclick="closeAccount();lock()">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
-          <rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          <path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"/>
+          <path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
         Lock and sign out</button>
     </div>`;
   document.body.appendChild(el);
@@ -1827,7 +2031,7 @@ function viewUsers(){
     </button>`).join('');
   return crumb('Projects',"go('projects')",'People') + `<main>
     <div class="banner"><b>Accounts</b>
-      Add someone here and they can sign in straight away with the User ID and PIN you set.
+      Add someone here and they can sign in straight away with the User ID and temporary password you set.
       Share a project with them and it appears on their device.</div>
     <div class="eyebrow">Accounts &middot; ${(state.users||[]).length}</div>
     ${rows || '<div class="empty"><b>No profiles yet</b></div>'}
@@ -1853,17 +2057,20 @@ function userForm(u){
   const isNew = !u;
   openSheet(isNew ? 'Add a person' : 'Edit ' + u.user_id, `
     <div class="q"><label class="qt">User ID</label>
-      <p class="guide">What they type at the keypad. Letters, numbers, dots, hyphens or underscores.</p>
+      <p class="guide">What they type to sign in. Letters, numbers, dots, hyphens or underscores.</p>
       <input type="text" id="u_id" value="${esc(u?u.user_id:'')}" placeholder="e.g. DaviesK"
              autocapitalize="none" autocorrect="off" ${u?'disabled':''}></div>
 
     <div class="q"><label class="qt">Full name</label>
       <input type="text" id="u_name" value="${esc(u?u.full_name:'')}" placeholder="Dave Whitfield"></div>
 
-    <div class="q"><label class="qt">${isNew ? 'PIN' : 'New PIN'}</label>
-      <p class="guide">${isNew ? 'Five digits. Write it down — you will need to give it to them.'
-                               : 'Leave blank to keep their current PIN.'}</p>
-      <input type="text" id="u_pin" inputmode="numeric" maxlength="5" placeholder="e.g. 40217"></div>
+    <div class="q"><label class="qt">${isNew ? 'Temporary password' : 'Reset their password'}</label>
+      <p class="guide">${isNew
+        ? 'They use this once and are then made to choose their own. At least 10 characters.'
+        : 'Only needed if they are locked out. You cannot look up the one they are using — it is not stored in readable form anywhere. Setting one here makes them choose a new one of their own at their next sign-in. Leave it blank to change nothing.'}</p>
+      <input type="text" id="u_pw" autocapitalize="none" autocorrect="off" spellcheck="false"
+             placeholder="${isNew ? 'at least 10 characters' : 'leave blank to leave it alone'}">
+      <button class="btn ghost" style="margin-top:8px" onclick="fillSuggested()">Suggest one</button></div>
 
     <div class="q"><label class="qt">Email (optional)</label>
       <p class="guide">Their real address, for notifications later. Not used to sign in.</p>
@@ -1885,15 +2092,25 @@ function userForm(u){
 
     <div class="q"><label class="qt">Welcome email</label>
       <p class="guide">${isNew
-        ? 'Sent to the address above, with their User ID and PIN. Needs an email address.'
-        : 'Sending it again also sets the PIN above as their new one — their current PIN is stored scrambled and cannot be read back, so there is nothing to remind them of. Leave the PIN blank and nothing is sent.'}</p>
+        ? 'Sent to the address above, with their User ID and temporary password. Needs an email address.'
+        : 'Sending it again also sets the password above as their new temporary one — their current password is stored scrambled and cannot be read back, so there is nothing to remind them of. Leave the password blank and nothing is sent.'}</p>
       <select id="u_welcome">
         <option value="0"${isNew?'':' selected'}>Do not send</option>
-        <option value="1"${isNew?' selected':''}>${isNew?'Send it now':'Send it again with the new PIN'}</option>
+        <option value="1"${isNew?' selected':''}>${isNew?'Send it now':'Send it again with the new password'}</option>
       </select></div>
 
     <button class="btn go" id="u_save" onclick="saveUser(${isNew?'null':`'${u.id}'`})">
       ${isNew?'Create account':'Save changes'}</button>`);
+}
+
+/* The generator lives in cloud.js next to the rules it has to satisfy, so a
+   suggestion can never be something the form would then reject. */
+function fillSuggested(){
+  const box = document.getElementById('u_pw');
+  if (!box) return;
+  box.value = CLOUD.suggestPassword();
+  box.focus();
+  box.select();
 }
 
 async function saveUser(existingId){
@@ -1901,37 +2118,44 @@ async function saveUser(existingId){
   const val = id => (document.getElementById(id) || {}).value || '';
   const userId = val('u_id').trim();
   const name   = val('u_name').trim();
-  const pin    = val('u_pin').trim();
+  const pw     = val('u_pw').trim();
   const email  = val('u_email').trim();
   const role   = val('u_role');
   const activeBox = document.getElementById('u_active');
 
   if (!CLOUD.validId(userId)){ toast('User ID: 3+ letters, numbers, dots, hyphens or underscores'); return; }
   if (!name){ toast('Enter their full name'); return; }
-  if (!existingId && !/^\d{5}$/.test(pin)){ toast('The PIN must be exactly 5 digits'); return; }
-  if (existingId && pin && !/^\d{5}$/.test(pin)){ toast('The PIN must be exactly 5 digits'); return; }
+  // Blank on an existing account means "leave their password alone". Blank on
+  // a new one is not a choice, it is a missing field.
+  if (!existingId || pw){
+    const problem = CLOUD.pwProblem(pw, userId);
+    if (problem){ toast(problem); return; }
+  }
 
   if (btn){ btn.disabled = true; btn.textContent = 'Working…'; }
   try {
     const wantsWelcome = ((document.getElementById('u_welcome')||{}).value === '1') && !!email;
 
     if (!existingId){
-      const res = await CLOUD.createUser(userId, pin, name, email, role, wantsWelcome);
+      const res = await CLOUD.createUser(userId, pw, name, email, role, wantsWelcome);
       // The account is made either way. Whether the email got out is a separate
       // question, and the screen says which — so nobody assumes it arrived.
       const mail = (res && res.mail) || { sent:false };
       const note = !wantsWelcome
         ? 'No welcome email was sent. Give these to them yourself.'
         : mail.sent
-          ? 'A welcome email has been sent to ' + esc(email) + '. Keep these anyway — the PIN is not shown again.'
+          ? 'A welcome email has been sent to ' + esc(email) + '. Keep these anyway — the password is not shown again.'
           : 'The account works, but the welcome email did not go: ' + esc(String(mail.error||'unknown reason')) +
             ' Give these to them yourself.';
       closeSheet();
       openSheet('Account created', `
-        <p class="sheetnote">Give these to <b>${esc(name)}</b>. The PIN is not shown again.</p>
+        <p class="sheetnote">Give these to <b>${esc(name)}</b>. The password is not shown again.</p>
         <div class="creds"><span>User ID</span><b>${esc(userId)}</b></div>
-        <div class="creds"><span>PIN</span><b>${esc(pin)}</b></div>
+        <div class="creds"><span>Password</span><b style="font-size:16px">${esc(pw)}</b></div>
         <p class="sheetnote">${note}</p>
+        <p class="sheetnote">That password works once. The app will then ask them to
+          choose their own, which you will not be able to see — so if they forget it,
+          the only thing to do is set them another temporary one from this screen.</p>
         <p class="sheetnote">They sign in at the same address as you. Share a project with
           them and it will appear on their device.</p>
         <button class="btn go" onclick="closeSheet()">Done</button>`);
@@ -1940,17 +2164,17 @@ async function saveUser(existingId){
         email: email || null, role,
         active: activeBox ? activeBox.value === '1' : true });
 
-      // Sending the welcome again sets the PIN as part of the same call, so it
-      // must not also be set separately — that would leave two different PINs
-      // in play depending on which finished last.
-      if (wantsWelcome && pin){
-        await CLOUD.sendWelcome(existingId, userId, pin);
+      // Sending the welcome again sets the password as part of the same call,
+      // so it must not also be set separately — that would leave two different
+      // passwords in play depending on which finished last.
+      if (wantsWelcome && pw){
+        await CLOUD.sendWelcome(existingId, userId, pw);
         closeSheet();
-        toast('Saved — new PIN set and emailed');
+        toast('Saved — temporary password set and emailed');
       } else {
-        if (pin) await CLOUD.setPin(existingId, userId, pin);
+        if (pw) await CLOUD.setPassword(existingId, userId, pw);
         closeSheet();
-        toast(pin ? 'Saved — new PIN set' : 'Saved');
+        toast(pw ? 'Saved — temporary password set' : 'Saved');
       }
     }
     state.users = await CLOUD.listUsers();
@@ -1982,16 +2206,18 @@ const DEFAULT_WELCOME_BODY = [
   '',
   '*Your details*',
   'User ID: *[userid]*',
-  'PIN: *[pin]*',
+  'Temporary password: *[password]*',
   '',
-  'Enter your User ID, then your five-digit PIN. Five wrong attempts will lock you out for a short time.',
+  'Enter your User ID and that password. It works once: the app will then ask you to choose a password of your own, at least 10 characters long. Nobody at WRM can see what you choose.',
+  '',
+  'Five wrong attempts will lock you out for a few minutes.',
   '',
   '*Put it on your phone*',
   'On iPhone, open the link in Safari, tap Share, then Add to Home Screen.',
   'On Android, open the link in Chrome, tap the menu, then Install app.',
-  'It then sits alongside your other apps and opens straight to the keypad.',
+  'It then sits alongside your other apps and opens straight to the sign-in screen.',
   '',
-  'Keep your PIN to yourself. Anything you sign carries your name and cannot be altered afterwards.',
+  'Keep your password to yourself. Anything you sign carries your name and cannot be altered afterwards.',
   '',
   'Any problems, speak to Garry Pougher (garry@workplace-rm.com).',
   '',
@@ -2018,7 +2244,8 @@ async function openEmailSettings(){
     <div class="q"><label class="qt">Message</label>
       <p class="guide">These are filled in for each person:
         <b>[name]</b> their first name · <b>[userid]</b> their User ID ·
-        <b>[pin]</b> their PIN · <b>[link]</b> the app address.<br>
+        <b>[password]</b> their temporary password · <b>[link]</b> the app address.<br>
+        <b>[pin]</b> still works and gets the password, so older wording is not broken.<br>
         A blank line starts a new paragraph. Text between *stars* comes out bold.</p>
       <textarea id="w_body" rows="18" style="font-size:13px;line-height:1.5">${esc(s.welcome_body)}</textarea></div>
 
@@ -2046,10 +2273,13 @@ async function saveWelcomeEmail(){
   if (!f.welcome_subject){ toast('The subject cannot be empty'); return; }
   if (!f.welcome_body.trim()){ toast('The message cannot be empty'); return; }
 
-  // A missing marker is not always a mistake — dropping [pin] is a reasonable
-  // choice if PINs are given out face to face — so this asks rather than
-  // refuses. What it will not do is let one go missing unnoticed.
-  const missing = ['[name]','[userid]','[pin]','[link]'].filter(k => f.welcome_body.indexOf(k) < 0);
+  // A missing marker is not always a mistake — dropping the password is a
+  // reasonable choice if it is given out face to face — so this asks rather
+  // than refuses. What it will not do is let one go missing unnoticed.
+  // [pin] counts as the password marker: it is still filled with it.
+  const missing = ['[name]','[userid]','[password]','[link]'].filter(k =>
+    f.welcome_body.indexOf(k) < 0 &&
+    !(k === '[password]' && f.welcome_body.indexOf('[pin]') >= 0));
   if (missing.length &&
       !confirm('The message does not use ' + missing.join(', ') +
                '.\n\nThat is fine if you meant it. Save anyway?')) return;
