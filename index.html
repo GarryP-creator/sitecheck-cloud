@@ -630,6 +630,7 @@ input.uidbox:focus{border-color:var(--hivis);outline:3px solid rgba(255,212,0,.3
 <script src="./lib/jspdf.umd.min.js"></script>
 <script src="./pdf.js"></script>
 <script src="./xlsx.js"></script>
+<script src="./report.js"></script>
 <script src="./talks.js"></script>
 <script src="./activities.js"></script>
 <script src="./methods.js"></script>
@@ -774,6 +775,7 @@ async function boot(){
   const missing = [
     !has('PDF')        || typeof PDF.downloadCombined !== 'function' ? 'pdf.js' : null,
     !has('XLS')        ? 'xlsx.js' : null,
+    !has('REPORT')     ? 'report.js' : null,
     !has('TALKS')      ? 'talks.js' : null,
     !has('ACTIVITIES') ? 'activities.js' : null,
     !has('METHODS')    ? 'methods.js' : null,
@@ -3777,6 +3779,14 @@ function viewReports(){
       Reports cover all projects, not just the one you're on. Nothing leaves the
       device until you share the file yourself.</div>
 
+    <div class="eyebrow">For the client</div>
+    <button class="row" onclick="managementReport()">
+      <span class="txt"><b>Management report</b>
+        <small>Charts, trends and what keeps failing &mdash; ${esc(state.client || 'all clients')}.
+          Opens in any browser; print it for a PDF.</small></span>
+      <span class="where">HTML</span>
+    </button>
+
     <div class="eyebrow">Download</div>
     ${row('Full workbook','Every report below, as tabs in one spreadsheet', n+' records', "report('all')")}
     ${row('Accidents &amp; incidents','Injuries, near misses, RIDDOR status, causes and actions', counts.ac, "report('ac')")}
@@ -3977,6 +3987,24 @@ function sheetMSSteps(){
     });
   });
   return { name:'Method statement steps', widths:[18,24,24,34,26,60,40,60,20], rows };
+}
+
+/* The management report follows whatever the dashboard is showing: pick a
+   client there, and the report covers that client. Leave it on all clients
+   and it covers everything this person can see. */
+function managementReport(){
+  if (!state.records.length){ toast('Nothing recorded yet'); return; }
+  try {
+    const name = REPORT.download({
+      records: state.records, projects: state.projects,
+      forms: FORMS, client: state.client,
+    });
+    toast('Report downloaded — open it in any browser');
+    console.log('management report:', name);
+  } catch(e){
+    console.error(e);
+    toast('Could not build the report');
+  }
 }
 
 function report(which){
