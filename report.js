@@ -26,6 +26,8 @@ const REPORT = (() => {
     { day:'2-digit', month:'short', year:'numeric' });
   const shortDate = ms => new Date(ms).toLocaleDateString('en-GB',
     { day:'numeric', month:'short' });
+  const monthYear = ms => new Date(ms).toLocaleDateString('en-GB',
+    { month:'long', year:'numeric' });
 
   /* Weeks run Monday to Sunday, because a site week does. */
   function weekStart(ms){
@@ -523,7 +525,7 @@ const REPORT = (() => {
   <h1>${esc(scope)}</h1>
   <p class="sub">${d.subtitle ? esc(d.subtitle) + '<br>' : ''}
     ${d.only ? '' : `${t.sites} site${t.sites === 1 ? '' : 's'} &middot; `}${t.records}
-    signed record${t.records === 1 ? '' : 's'} &middot; the ${d.weeks.length} weeks to ${ukDate(d.now)}</p>
+    signed record${t.records === 1 ? '' : 's'} &middot; ${monthYear(d.now)}</p>
   <div class="foot">
     <span>Prepared ${ukDate(d.now)} from SiteCheck<br>
       Every figure counted from records signed on site</span>
