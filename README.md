@@ -25,12 +25,11 @@ password.
 Everyone after you is created from inside the app, and nothing needs touching
 in Supabase again.
 
-> **Up to August 2026** the password was derived from a five-digit PIN —
+> **Up to October 2026** the password was derived from a five-digit PIN —
 > literally `<userid in lowercase>#<pin>`, so five digits was the whole secret.
-> An account that has not been moved over yet can still sign in with its old
-> PIN exactly once, and the app then makes that person choose a password before
-> it will show them anything. Nothing needs migrating; it empties itself out as
-> people sign in.
+> That route is gone. An account still holding a PIN-derived password cannot
+> sign in at all: open it under People and set a temporary password, which puts
+> that person through the "choose a password" screen like anyone else.
 
 ### 2. Upload the files
 

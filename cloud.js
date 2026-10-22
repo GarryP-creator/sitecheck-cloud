@@ -37,15 +37,16 @@ const CLOUD = (() => {
      Supabase wants an email address. People on site have a User ID. So the
      address is generated from the User ID and never typed by anyone.
 
-     The password is now the person's own, held by Supabase as a salted hash
-     and never seen by this app or by a superuser.
+     The password is the person's own, held by Supabase as a salted hash and
+     never seen by this app, by a superuser, or by anyone with the database
+     open in front of them.
 
-     Until August 2026 it was not: a five-digit PIN was mixed with the User ID
-     to make a password, which meant anyone who knew the scheme needed only
-     five digits. legacyPassFor reproduces that so an account that has not
-     been moved over yet can still get in once — see signIn.             */
+     Until October 2026 it was not: a five-digit PIN was mixed with the User ID
+     to make the password — `daviesk#40217` — so five digits was the whole
+     secret. Nothing here reproduces that any more. An account still holding a
+     PIN-derived password cannot sign in at all; a superuser sets it a
+     temporary password from the People screen instead.                   */
   const emailFor = id => `${String(id).trim().toLowerCase()}@${DOMAIN}`;
-  const legacyPassFor = (id, pin) => `${String(id).trim().toLowerCase()}#${pin}`;
 
   const validId = id => /^[A-Za-z0-9._-]{3,32}$/.test(String(id || '').trim());
 
@@ -144,18 +145,7 @@ const CLOUD = (() => {
     if (!c) throw new Error('offline');
     const email = emailFor(userId);
 
-    let res = await c.auth.signInWithPassword({ email, password });
-    let viaPin = false;
-
-    /* Not moved over yet? Five digits may still be their old PIN. Accept it,
-       but remember how they got in — afterLogin sends them straight to the
-       password screen and nowhere else. */
-    if (res.error && /^\d{5}$/.test(String(password || ''))){
-      const retry = await c.auth.signInWithPassword({
-        email, password: legacyPassFor(userId, password),
-      });
-      if (!retry.error){ res = retry; viaPin = true; }
-    }
+    const res = await c.auth.signInWithPassword({ email, password });
     if (res.error) throw res.error;
 
     const { data: p, error: pe } = await c.from('profiles')
@@ -163,7 +153,10 @@ const CLOUD = (() => {
     if (pe) throw new Error('Signed in, but no profile found. Ask a superuser to finish setting up this account.');
     if (!p.active) { await c.auth.signOut(); throw new Error('This account has been deactivated.'); }
 
-    pwKnownGood = !viaPin && hasOwnPassword(res.data.user);
+    /* No mark on the login means the password was set by somebody else — a
+       temporary one handed over by a superuser. They get the password screen
+       and nothing behind it. */
+    pwKnownGood = hasOwnPassword(res.data.user);
     await DB.set('pwOk', pwKnownGood);
 
     profile = p;

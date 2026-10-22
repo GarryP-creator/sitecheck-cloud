@@ -838,9 +838,10 @@ function paintSync(){
    User ID and password. Five wrong attempts and it locks for a few minutes,
    which is what stops somebody working through a list of guesses.
 
-   Until August 2026 this was a five-digit keypad. It is kept working for one
-   sign-in per account — see signIn in cloud.js — and that sign-in can only
-   reach the screen that replaces it.                                    */
+   Nothing is remembered between sign-ins: the User ID box is empty every
+   time, because leaving a name on screen tells the next person who to try.
+   A browser may still fill it from its own saved passwords, which is the
+   person's own setting and not something the app does.                  */
 function viewLogin(){
   const locked = state.lockUntil && state.lockUntil > Date.now();
   const wait = locked ? Math.ceil((state.lockUntil - Date.now()) / 1000) : 0;
@@ -898,7 +899,13 @@ async function tryLogin(){
 
   if (!id){ state.loginMsg = 'Enter your User ID first'; render(); return; }
   if (!CLOUD.validId(id)){
-    state.loginMsg = 'User IDs use letters, numbers, dots, hyphens or underscores';
+    /* Now that there is a password box on this screen, browsers recognise it
+       as a login form and offer a saved email address for the User ID. Saying
+       "User IDs use letters, numbers..." is true and no help at all when what
+       has actually happened is that something filled the box for you. */
+    state.loginMsg = id.includes('@')
+      ? 'That is an email address — SiteCheck wants your User ID, the short one like DaviesK'
+      : 'User IDs use letters, numbers, dots, hyphens or underscores';
     render(); return;
   }
   if (!p){ state.loginMsg = 'Enter your password'; render(); return; }
@@ -941,8 +948,8 @@ async function tryLogin(){
 async function afterLogin(prof){
   state.profile = prof;
 
-  /* Still on a PIN, or on a temporary password a superuser handed over. They
-     get one screen and no app behind it until they have set their own. */
+  /* Signed in on a temporary password a superuser handed over. They get one
+     screen and no app behind it until they have set their own. */
   if (CLOUD.needsPassword()){
     state.setPwMsg = '';
     state.view = 'setpw';
@@ -957,26 +964,28 @@ async function afterLogin(prof){
 }
 
 /* ---- setting a password ------------------------------------------------
-   Reached two ways: straight after signing in with an old PIN or a handed-over
-   temporary password, and on opening the app if the person was already signed
-   in when this change went out. Either way there is no way past it except
-   setting a password or signing out.                                    */
+   Reached two ways: straight after signing in with a handed-over temporary
+   password, and on opening the app if the person was already signed in when
+   passwords arrived. Either way there is no way past it except setting a
+   password or signing out.                                              */
 function viewSetPw(){
   const who = (state.profile||{}).full_name || (state.profile||{}).user_id || '';
+
   return `<div class="tape"></div><div class="lockwrap"><div class="login">
     <div class="mark">${logo("#FFD400","#14171A",16,30)}</div>
     <h2>Choose a password</h2>
     <p class="by">cloud &middot; by <b>WRM</b></p>
 
     <div class="pwwhy"><b>${esc(who)}</b>
-      SiteCheck has moved from five-digit PINs to proper passwords. Set yours
-      now and you will use it from here on. Nobody at WRM can see it.</div>
+      The password you signed in with was a temporary one, and whoever set your
+      account up knows what it is. Choose your own now — at least 10 characters,
+      and nobody else will be able to see it, WRM included.</div>
 
     <label class="uid">New password</label>
     <div class="pwrow">
       <input type="password" id="np" class="uidbox" autocomplete="new-password"
              autocapitalize="none" autocorrect="off" spellcheck="false"
-             placeholder="at least 10 characters" oninput="pwLive()">
+             placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" oninput="pwLive()">
       <button type="button" class="peek" onclick="peek('np',this)">Show</button>
     </div>
     <p class="pwhint" id="nphint">Ten characters or more. Three words you will
