@@ -1567,6 +1567,8 @@ function viewProjects(){
       <b>${esc(state.client || (clients.length === 1 ? clients[0][0] : 'All clients'))}</b>
       <button class="act go" onclick="managementReport()"
         title="A report covering everything shown on this screen">Report</button>
+      <button class="act" onclick="go('reports')"
+        title="Spreadsheets of the underlying data">Data</button>
       ${clients.length > 1
         ? `<button class="act chg" onclick="openClients()">Change</button>` : ''}
     </div>
@@ -3791,24 +3793,45 @@ async function openAudit(){
    Pulls everything recorded on this device into a spreadsheet. Built on the
    device, so it works with no signal. Each report is a tab in one .xlsx.   */
 function viewReports(){
-  const n = state.records.length;
+  // Counted on the same scope the downloads use, so the number beside a row
+  // is the number of rows in the file you get when you tap it.
+  const scopedProjects = state.client
+    ? (state.projects || []).filter(p => (p.client || '').trim() === state.client)
+    : (state.projects || []);
+  const ids = new Set(scopedProjects.map(p => p.id));
+  const recs = state.client
+    ? (state.records || []).filter(r => ids.has(r.projectId))
+    : (state.records || []);
+
+  const n = recs.length;
   const counts = {
-    ac: state.records.filter(r => r.formId === 'ac01').length,
-    hz: state.records.filter(r => r.formId === 'hz01').length,
-    ra: state.records.filter(r => r.formId === 'ra01').length,
-    tb: state.records.filter(r => r.formId === 'tb01').length,
-    ms: state.records.filter(r => r.formId === 'ms01').length,
-    fails: state.records.reduce((t, r) => t + (r.fails || 0), 0),
+    ac: recs.filter(r => r.formId === 'ac01').length,
+    hz: recs.filter(r => r.formId === 'hz01').length,
+    ra: recs.filter(r => r.formId === 'ra01').length,
+    tb: recs.filter(r => r.formId === 'tb01').length,
+    ms: recs.filter(r => r.formId === 'ms01').length,
+    fails: recs.reduce((t, r) => t + (r.fails || 0), 0),
   };
   const row = (t, d, cnt, fn) => `
     <button class="row" onclick="${fn}">
       <span class="txt"><b>${t}</b><small>${d}</small></span>
       <span class="where">${cnt}</span>
     </button>`;
-  return crumb('Home',"go('home')",'Reports') + `<main>
-    <div class="banner"><b>Everything on this device</b>
-      Reports cover all projects, not just the one you're on. Nothing leaves the
-      device until you share the file yourself.</div>
+  // Reachable from the dashboard as well as from inside a project, so the way
+  // back depends on where you came in.
+  const back = state.site
+    ? crumb('Home', "go('home')", 'Reports')
+    : crumb('Dashboard', "goHome()", 'Reports');
+
+  return back + `<main>
+    <div class="banner"><b>${state.client
+        ? 'Everything for ' + esc(state.client)
+        : 'Everything on this device'}</b>
+      ${state.client
+        ? `These cover every ${esc(state.client)} site you can see, not just the one
+           you're on. Change the client on the dashboard and these change with it.`
+        : `Reports cover all projects, not just the one you're on.`}
+      Nothing leaves the device until you share the file yourself.</div>
 
     <div class="eyebrow">For the client</div>
     ${state.site ? `
@@ -3828,7 +3851,7 @@ function viewReports(){
     ${row('Full workbook','Every report below, as tabs in one spreadsheet', n+' records', "report('all')")}
     ${row('Accidents &amp; incidents','Injuries, near misses, RIDDOR status, causes and actions', counts.ac, "report('ac')")}
     ${row('Hazards reported','What was raised, where, how urgent and who it went to', counts.hz, "report('hz')")}
-    ${row('Projects','Every project with its record count and outstanding fails', state.projects.length, "report('proj')")}
+    ${row('Projects','Every project with its record count and outstanding fails', scopedProjects.length, "report('proj')")}
     ${row('Risk assessments','One row per hazard, with scores and further action', counts.ra, "report('ra')")}
     ${row('Method statements','Summary plus every step, hazard and control', counts.ms, "report('ms')")}
     ${row('Toolbox talks','Topic, attendance and actions arising', counts.tb, "report('tb')")}
@@ -4094,6 +4117,27 @@ function managementReport(projectId){
 /* What the button should say, so it is obvious what you are about to get. */
 const reportScopeName = () => state.client || 'all clients';
 
+/* The sheet builders all read state.records and state.projects directly, and
+   there are ten of them. Rather than thread a filter through every one — ten
+   chances to miss one, and a spreadsheet that quietly includes another
+   client's sites is worse than no spreadsheet — the scope is applied once
+   here, around the build, and put back immediately afterwards. It is
+   synchronous, so nothing else can observe the swap. */
+function withClientScope(fn){
+  if (!state.client) return fn();
+  const allP = state.projects, allR = state.records;
+  const mine = allP.filter(p => (p.client || '').trim() === state.client);
+  const ids = new Set(mine.map(p => p.id));
+  try {
+    state.projects = mine;
+    state.records = allR.filter(r => ids.has(r.projectId));
+    return fn();
+  } finally {
+    state.projects = allP;
+    state.records = allR;
+  }
+}
+
 function report(which){
   if (!state.records.length && which !== 'proj'){ toast('Nothing recorded yet'); return; }
   const map = {
@@ -4113,9 +4157,10 @@ function report(which){
   const names = { proj:'Projects', recs:'All records', act:'Actions', ac:'Accidents',
                   hz:'Hazards', ra:'Risk assessments', tb:'Toolbox talks', ms:'Method statements', ans:'Every answer', all:'Full report' };
   try {
-    const sheets = map[which].map(fn => fn());
+    const sheets = withClientScope(() => map[which].map(fn => fn()));
     const stamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
-    XLS.download(sheets, `WRM SiteCheck ${names[which]} ${stamp}.xlsx`);
+    const who = state.client ? state.client.replace(/[\\\/:*?"<>|]/g,'') + ' ' : '';
+    XLS.download(sheets, `WRM SiteCheck ${who}${names[which]} ${stamp}.xlsx`);
     toast('Spreadsheet downloaded');
   } catch(e){ console.error(e); toast('Could not build the spreadsheet'); }
 }
