@@ -434,21 +434,60 @@ const REPORT = (() => {
 
   /* Print: the browser's own Save as PDF is how this becomes a PDF, so it
      has to break in sensible places and not waste ink on backgrounds. */
+  /* The title slide exists only on paper. */
+  .cover{display:none}
+
+  /* Printing produces a slide deck: landscape, a title page, then one
+     section per page. The charts are the same SVG that is on screen, so
+     they come out sharp rather than as a screenshot of a chart. A section
+     taller than one page flows onto a second rather than being clipped —
+     a cut-off table is worse than a deck with an extra page in it. */
   @media print{
-    body{background:#fff;font-size:11pt}
+    @page{size:A4 landscape;margin:12mm}
+    body{background:#fff;font-size:10.5pt}
     .sheet{box-shadow:none;max-width:none}
-    header{padding:18px 0 14px}
-    main{padding:16px 0 0}
-    section{break-inside:avoid;margin-bottom:22px}
+    .tabs{display:none}
+    header{display:none}
+    /* A couple of millimetres of slack. Flush to the page margin, a grid
+       whose last column lands a pixel over gets sliced down its edge. */
+    main{padding:0 3mm}
+
+    .cover{display:flex;flex-direction:column;justify-content:center;
+      min-height:170mm;break-after:page;padding:0 6mm}
+    .cover .rule{width:72px;height:6px;background:var(--hivis);margin-bottom:22px}
+    .cover .kick{font-family:var(--mono);font-size:11pt;letter-spacing:.3em;
+      text-transform:uppercase;color:var(--soft);margin:0 0 14px}
+    .cover h1{font-size:34pt;line-height:1.05;margin:0 0 18px;letter-spacing:-.02em}
+    .cover .sub{font-size:13pt;color:var(--soft);margin:0 0 30px;line-height:1.5}
+    .cover .foot{font-size:10pt;color:var(--soft);border-top:2px solid var(--ink);
+      padding-top:12px;display:flex;justify-content:space-between;gap:20px}
+    .cover .foot b{color:var(--ink);letter-spacing:.14em}
+
+    .panel{display:block !important;break-before:page;break-inside:auto}
+    .panel:first-of-type{break-before:avoid}
+    section{margin-bottom:16px}
+    h2{font-size:11pt;margin-bottom:6px}
+    .lede{font-size:10pt;max-width:none}
+    /* Three across, two rows. Six in a line overflows the page and the last
+       tile comes out sliced down the middle. */
+    .stats{grid-template-columns:repeat(3,1fr);gap:8px}
+    .stat b{font-size:22pt}
+    .chart{max-height:95mm}
     table{break-inside:auto}
     tr{break-inside:avoid}
     thead{display:table-header-group}
-    .pagebreak{break-before:page}
-    .tabs{display:none}
-    .panel{display:block !important}
-    .panel + .panel{break-before:page}
-    @page{margin:14mm}
+    footer{break-before:page;margin:0;border-top-width:2px}
   }
+
+  /* The button that starts it. Hidden on paper, obviously. */
+  .deck{position:fixed;right:18px;bottom:18px;z-index:40;
+    background:var(--ink);color:var(--hivis);border:0;border-radius:4px;
+    font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:.12em;
+    text-transform:uppercase;padding:13px 17px;cursor:pointer;
+    box-shadow:0 4px 16px rgba(0,0,0,.3)}
+  .deck:hover{background:#22262B}
+  @media print{ .deck{display:none} }
+  @media (max-width:620px){ .deck{right:12px;bottom:12px;padding:12px 14px} }
 </style></head>
 <body><div class="sheet">
 
@@ -477,6 +516,20 @@ const REPORT = (() => {
 </nav>
 
 <main>
+
+<div class="cover">
+  <div class="rule"></div>
+  <p class="kick">Compliance Pack</p>
+  <h1>${esc(scope)}</h1>
+  <p class="sub">${d.subtitle ? esc(d.subtitle) + '<br>' : ''}
+    ${d.only ? '' : `${t.sites} site${t.sites === 1 ? '' : 's'} &middot; `}${t.records}
+    signed record${t.records === 1 ? '' : 's'} &middot; the ${d.weeks.length} weeks to ${ukDate(d.now)}</p>
+  <div class="foot">
+    <span>Prepared ${ukDate(d.now)} from SiteCheck<br>
+      Every figure counted from records signed on site</span>
+    <span style="text-align:right"><b>WRM</b><br>Workplace Risk Management Ltd</span>
+  </div>
+</div>
 
 <div class="panel" id="panel-overview">
 <section>
@@ -587,6 +640,9 @@ ${d.topics.length ? `
 </div>` : ''}
 
 </main>
+
+<button class="deck" onclick="window.print()"
+  title="Opens your browser's print dialog — choose Save as PDF">Save as PDF deck</button>
 
 <script>
 /* The only script in the file, and the report reads perfectly without it:

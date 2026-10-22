@@ -81,12 +81,33 @@ const XLS = (() => {
   // Excel counts days from 1899-12-30
   const serial = d => (d.getTime() - Date.UTC(1899,11,30) + d.getTimezoneOffset() * -60000) / 86400000;
 
-  function cell(v, r, c){
+  /* Style slots, in the order they appear in cellXfs below:
+       0 plain            1 header          2 date
+       3 plain banded     4 date banded     5 FAIL         6 FAIL banded
+     Banding is done per row rather than with a table style, because a real
+     Excel table changes how filtering behaves and these sheets already have
+     an autofilter on the header. */
+  const S = { plain:0, head:1, date:2, plainB:3, dateB:4, fail:5, failB:6 };
+
+  // A cell saying FAIL is the whole reason anyone opens these sheets, so it
+  // is the one thing picked out. Matched on the word rather than a column,
+  // because different reports put it in different places.
+  const isFail = v => typeof v === 'string' && /^(fail|failed)\b/i.test(v.trim());
+
+  function cell(v, r, c, band){
     const ref = colRef(c) + r;
-    if (v == null || v === '') return '';
-    if (v instanceof Date)      return `<c r="${ref}" s="2"><v>${serial(v)}</v></c>`;
-    if (typeof v === 'number' && isFinite(v)) return `<c r="${ref}"><v>${v}</v></c>`;
-    return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${x(v)}</t></is></c>`;
+    if (v == null || v === '') return band ? `<c r="${ref}" s="${S.plainB}"/>` : '';
+    /* { f:'SUM(...)' } writes a real formula, so a summary built on one
+       recalculates when somebody filters or edits the sheet it reads. A
+       summary of frozen numbers goes stale the moment it is touched. */
+    if (typeof v === 'object' && v.f)
+      return `<c r="${ref}" s="${v.bold ? S.head : band ? S.plainB : S.plain}"><f>${x(v.f)}</f></c>`;
+    if (v instanceof Date)
+      return `<c r="${ref}" s="${band ? S.dateB : S.date}"><v>${serial(v)}</v></c>`;
+    if (typeof v === 'number' && isFinite(v))
+      return `<c r="${ref}" s="${band ? S.plainB : S.plain}"><v>${v}</v></c>`;
+    const s = isFail(v) ? (band ? S.failB : S.fail) : (band ? S.plainB : S.plain);
+    return `<c r="${ref}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${x(v)}</t></is></c>`;
   }
 
   function sheetXml(rows, widths){
@@ -96,7 +117,7 @@ const XLS = (() => {
       const cells = row.map((v, ci) =>
         ri === 0
           ? `<c r="${colRef(ci)}1" s="1" t="inlineStr"><is><t>${x(v)}</t></is></c>`
-          : cell(v, ri + 1, ci)
+          : cell(v, ri + 1, ci, ri % 2 === 0)
       ).join('');
       return `<row r="${ri+1}">${cells}</row>`;
     }).join('');
@@ -108,21 +129,36 @@ ${cols}<sheetData>${body}</sheetData>
 <autoFilter ref="A1:${lastCol}${Math.max(rows.length,1)}"/></worksheet>`;
   }
 
+  /* Fonts  0 plain · 1 header bold · 2 FAIL red bold
+     Fills  0 none · 1 gray125 (Excel reserves these two) · 2 hi-vis header
+            3 band (a barely-there warm grey) · 4 fail (pale red)
+     Borders 0 none · 1 thin bottom rule under the header                 */
   const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <numFmts count="1"><numFmt numFmtId="164" formatCode="dd/mm/yyyy\\ hh:mm"/></numFmts>
-<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font>
-<font><b/><sz val="11"/><color rgb="FF14171A"/><name val="Calibri"/></font></fonts>
-<fills count="3"><fill><patternFill patternType="none"/></fill>
+<fonts count="3">
+<font><sz val="11"/><name val="Calibri"/></font>
+<font><b/><sz val="11"/><color rgb="FF14171A"/><name val="Calibri"/></font>
+<font><b/><sz val="11"/><color rgb="FFC8102E"/><name val="Calibri"/></font></fonts>
+<fills count="5"><fill><patternFill patternType="none"/></fill>
 <fill><patternFill patternType="gray125"/></fill>
-<fill><patternFill patternType="solid"><fgColor rgb="FFFFD400"/><bgColor indexed="64"/></patternFill></fill></fills>
-<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFFD400"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFF4F2EC"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFBE4E7"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left/><right/><top/><bottom style="medium"><color rgb="FF14171A"/></bottom><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="3">
+<cellXfs count="7">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
 <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
-</cellXfs></styleSheet>`;
+<xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1"/>
+<xf numFmtId="164" fontId="0" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1"/>
+<xf numFmtId="0" fontId="2" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+<xf numFmtId="0" fontId="2" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
 
   /* --- workbook ----------------------------------------------------------- */
   function build(sheets){

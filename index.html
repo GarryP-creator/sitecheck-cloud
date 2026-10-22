@@ -3872,6 +3872,53 @@ function answerText(item, a){
   return a.v == null ? '' : String(a.v);
 }
 
+/* ---- summary ----
+   Built on formulas that read the All records tab rather than numbers baked
+   in at export time. Filter that tab, or correct a row, and these move with
+   it. A summary of frozen figures is wrong the moment anybody touches the
+   sheet, and wrong quietly. */
+function sheetSummary(){
+  const SRC = "'All records'";
+  const q = s => '"' + String(s).replace(/"/g,'""') + '"';
+  const f = (formula, bold) => ({ f: formula, bold: !!bold });
+
+  const passed = `SUM(${SRC}!H:H)`, failed = `SUM(${SRC}!I:I)`;
+
+  const rows = [
+    ['WRM SiteCheck', 'Summary', '', ''],
+    ['Exported', new Date(), '', ''],
+    ['', '', '', ''],
+
+    ['Overall', '', '', ''],
+    ['Records', f(`COUNTA(${SRC}!E2:E20000)`), '', ''],
+    ['Items checked', f(`${passed}+${failed}`), '', ''],
+    ['Passed', f(passed), '', ''],
+    ['Failed', f(failed), '', ''],
+    ['Pass rate %', f(`IF(${passed}+${failed}=0,"",ROUND(100*${passed}/(${passed}+${failed}),1))`), '', ''],
+    ['Records with a failure', f(`COUNTIF(${SRC}!I:I,">0")`), '', ''],
+    ['', '', '', ''],
+
+    ['By form', 'Records', 'Failed items', ''],
+  ];
+
+  FORMS.forEach(form => {
+    rows.push([form.title,
+      f(`COUNTIF(${SRC}!C:C,${q(form.title)})`),
+      f(`SUMIF(${SRC}!C:C,${q(form.title)},${SRC}!I:I)`), '']);
+  });
+
+  rows.push(['', '', '', '']);
+  rows.push(['By project', 'Records', 'Failed items', 'Client']);
+  (state.projects || []).forEach(p => {
+    rows.push([p.name,
+      f(`COUNTIF(${SRC}!B:B,${q(p.name)})`),
+      f(`SUMIF(${SRC}!B:B,${q(p.name)},${SRC}!I:I)`),
+      p.client || '']);
+  });
+
+  return { name:'Summary', widths:[42,14,14,28], rows };
+}
+
 function sheetRecords(){
   const rows = [['Date','Project','Form','Code','Reference','Completed by',
                  'Items','Passed','Failed','N/A','Not answered','Failed items and notes']];
@@ -4059,7 +4106,9 @@ function report(which){
     ra:    [sheetRA],
     tb:    [sheetToolbox],
     ms:    [sheetMS, sheetMSSteps],
-    all:   [sheetProjects, sheetRecords, sheetActions, sheetAccidents, sheetHazards, sheetRA, sheetToolbox, sheetMS, sheetMSSteps, sheetAnswers],
+    // Summary first, because it is the tab that answers the question; it
+    // reads All records, so that tab has to be in the book with it.
+    all:   [sheetSummary, sheetProjects, sheetRecords, sheetActions, sheetAccidents, sheetHazards, sheetRA, sheetToolbox, sheetMS, sheetMSSteps, sheetAnswers],
   };
   const names = { proj:'Projects', recs:'All records', act:'Actions', ac:'Accidents',
                   hz:'Hazards', ra:'Risk assessments', tb:'Toolbox talks', ms:'Method statements', ans:'Every answer', all:'Full report' };
