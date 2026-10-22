@@ -606,8 +606,16 @@ input.uidbox:focus{border-color:var(--hivis);outline:3px solid rgba(255,212,0,.3
 .scope .lbl{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-soft);flex:0 0 auto}
 .scope b{flex:1;min-width:0;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.scope .chg{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--duty);flex:0 0 auto}
+.scope .act{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--duty);flex:0 0 auto;background:none;border:0;
+  padding:6px 8px;margin:-6px 0;border-radius:3px;cursor:pointer}
+.scope .act:active{background:var(--concrete)}
+@media (max-width:430px){
+  /* the name gets the room; the two actions keep their tap targets */
+  .scope{flex-wrap:wrap}
+  .scope b{flex:1 1 100%;order:-1;margin-bottom:2px}
+  .scope .lbl{order:-2}
+}
 
 /* hover readout on the charts — one element, moved about */
 .tip{position:fixed;z-index:60;background:var(--ink);color:#fff;font-size:12px;line-height:1.4;
@@ -1546,12 +1554,14 @@ function viewProjects(){
     </button>`).join('');
 
   return `<main class="wide">
-    ${clients.length > 1 ? `
-      <button class="scope" onclick="openClients()">
-        <span class="lbl">Showing</span>
-        <b>${esc(state.client || 'All clients')}</b>
-        <span class="chg">Change &rsaquo;</span>
-      </button>` : ''}
+    <div class="scope">
+      <span class="lbl">Showing</span>
+      <b>${esc(state.client || (clients.length === 1 ? clients[0][0] : 'All clients'))}</b>
+      <button class="act" onclick="managementReport()"
+        title="A report covering everything shown on this screen">Report &rsaquo;</button>
+      ${clients.length > 1
+        ? `<button class="act chg" onclick="openClients()">Change &rsaquo;</button>` : ''}
+    </div>
 
     <div class="board">
       <div class="bt"></div>
@@ -3780,9 +3790,15 @@ function viewReports(){
       device until you share the file yourself.</div>
 
     <div class="eyebrow">For the client</div>
+    ${state.site ? `
+      <button class="row" onclick="managementReport('${state.site.id}')">
+        <span class="txt"><b>Report for ${esc(state.site.name)}</b>
+          <small>This site on its own &mdash; charts, trends and what keeps failing here.</small></span>
+        <span class="where">HTML</span>
+      </button>` : ''}
     <button class="row" onclick="managementReport()">
-      <span class="txt"><b>Management report</b>
-        <small>Charts, trends and what keeps failing &mdash; ${esc(state.client || 'all clients')}.
+      <span class="txt"><b>Report for ${esc(reportScopeName())}</b>
+        <small>Every site ${state.client ? 'this client has' : 'you can see'}, in one report.
           Opens in any browser; print it for a PDF.</small></span>
       <span class="where">HTML</span>
     </button>
@@ -3992,12 +4008,13 @@ function sheetMSSteps(){
 /* The management report follows whatever the dashboard is showing: pick a
    client there, and the report covers that client. Leave it on all clients
    and it covers everything this person can see. */
-function managementReport(){
+function managementReport(projectId){
   if (!state.records.length){ toast('Nothing recorded yet'); return; }
   try {
     const name = REPORT.download({
-      records: state.records, projects: state.projects,
-      forms: FORMS, client: state.client,
+      records: state.records, projects: state.projects, forms: FORMS,
+      client: projectId ? null : state.client,
+      projectId: projectId || null,
     });
     toast('Report downloaded — open it in any browser');
     console.log('management report:', name);
@@ -4006,6 +4023,8 @@ function managementReport(){
     toast('Could not build the report');
   }
 }
+/* What the button should say, so it is obvious what you are about to get. */
+const reportScopeName = () => state.client || 'all clients';
 
 function report(which){
   if (!state.records.length && which !== 'proj'){ toast('Nothing recorded yet'); return; }

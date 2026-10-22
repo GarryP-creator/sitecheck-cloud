@@ -37,9 +37,18 @@ const REPORT = (() => {
 
   /* ---- working the numbers out ----------------------------------------- */
   function analyse(opts){
-    const { records, projects, forms, client, weeks = 12 } = opts;
+    const { records, projects, forms, client, projectId, weeks = 12 } = opts;
 
-    const inScope = projects.filter(p => !client || (p.client || '').trim() === client);
+    // One site, one client, or everything this person can see.
+    const inScope = projectId
+      ? projects.filter(p => p.id === projectId)
+      : projects.filter(p => !client || (p.client || '').trim() === client);
+
+    const only = projectId ? inScope[0] : null;
+    const title = only ? only.name : (client || 'All clients');
+    const subtitle = only
+      ? [only.client, only.address].filter(Boolean).join(' · ')
+      : '';
     const ids = new Set(inScope.map(p => p.id));
     const recs = records.filter(r => ids.has(r.projectId))
                         .sort((a,b) => new Date(b.at) - new Date(a.at));
@@ -140,7 +149,8 @@ const REPORT = (() => {
     const since = n => recs.filter(r => new Date(r.at).getTime() > now - n*DAY);
 
     return {
-      client, now, weeks: buckets, sites, topFails, incidents, hazards, topics,
+      client, projectId, title, subtitle, only,
+      now, weeks: buckets, sites, topFails, incidents, hazards, topics,
       attendances, recs, inScope,
       checksPassed, checksFailed,
       passRate: checksPassed + checksFailed
@@ -279,7 +289,7 @@ const REPORT = (() => {
   /* ---- the document ------------------------------------------------------ */
   function html(d){
     const t = d.totals;
-    const scope = d.client || 'All clients';
+    const scope = d.title;
     const weekLabel = b => shortDate(b.from);
 
     const stat = (n, label, sub, tone) => `
@@ -447,7 +457,8 @@ const REPORT = (() => {
   <p class="kick">Health &amp; Safety Report</p>
   <h1>${esc(scope)}</h1>
   <p class="meta">
-    <b>${t.sites}</b> site${t.sites === 1 ? '' : 's'} &middot;
+    ${d.subtitle ? `${esc(d.subtitle)}<br>` : ''}
+    ${d.only ? '' : `<b>${t.sites}</b> site${t.sites === 1 ? '' : 's'} &middot; `}
     <b>${t.records}</b> signed record${t.records === 1 ? '' : 's'} &middot;
     the ${d.weeks.length} weeks to ${ukDate(d.now)}<br>
     Generated ${ukDate(d.now)} from SiteCheck. Every figure is counted from
@@ -460,7 +471,7 @@ const REPORT = (() => {
   <button role="tab" aria-selected="true"  data-panel="overview">Overview</button>
   <button role="tab" aria-selected="false" data-panel="failing">What keeps failing<span class="n">${d.topFails.length}</span></button>
   <button role="tab" aria-selected="false" data-panel="activity">Activity</button>
-  <button role="tab" aria-selected="false" data-panel="sites">Sites<span class="n">${t.sites}</span></button>
+  <button role="tab" aria-selected="false" data-panel="sites">${d.only ? 'This site' : `Sites<span class="n">${t.sites}</span>`}</button>
   <button role="tab" aria-selected="false" data-panel="incidents">Incidents<span class="n">${t.incidents}</span></button>
   ${d.topics.length ? `<button role="tab" aria-selected="false" data-panel="talks">Toolbox talks<span class="n">${t.talks}</span></button>` : ''}
 </nav>
@@ -520,7 +531,11 @@ const REPORT = (() => {
 
 <div class="panel" id="panel-sites">
 <section>
-  <h2>Where every site stands</h2>
+  <h2>${d.only ? 'Where this site stands' : 'Where every site stands'}</h2>
+  ${d.only ? `
+    <p class="lede">A site is current when its weekly safety inspection was signed
+      within the last five days, due at six or seven, and overdue past that.</p>`
+  : `
   <div class="two">
     <div>
       ${donut([
@@ -535,7 +550,7 @@ const REPORT = (() => {
         overdue past that. A site with no inspection on record at all is counted
         overdue.</p>
     </div>
-  </div>
+  </div>`}
   <div class="tablewrap" style="margin-top:18px">
   <table>
     <thead><tr><th>Ref</th><th>Site</th><th style="text-align:right">Records</th>
@@ -624,7 +639,8 @@ ${d.topics.length ? `
 
   function download(opts){
     const doc = build(opts);
-    const name = `WRM Health and Safety Report ${(opts.client || 'All clients')
+    const d = analyse(opts);
+    const name = `WRM Health and Safety Report ${String(d.title)
       .replace(/[\\\/:*?"<>|]/g,'')} ${new Date().toISOString().slice(0,10)}.html`;
     const blob = new Blob([doc], { type:'text/html;charset=utf-8' });
     const a = document.createElement('a');
