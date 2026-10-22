@@ -606,15 +606,23 @@ input.uidbox:focus{border-color:var(--hivis);outline:3px solid rgba(255,212,0,.3
 .scope .lbl{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-soft);flex:0 0 auto}
 .scope b{flex:1;min-width:0;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.scope .act{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--duty);flex:0 0 auto;background:none;border:0;
-  padding:6px 8px;margin:-6px 0;border-radius:3px;cursor:pointer}
-.scope .act:active{background:var(--concrete)}
-@media (max-width:430px){
-  /* the name gets the room; the two actions keep their tap targets */
-  .scope{flex-wrap:wrap}
-  .scope b{flex:1 1 100%;order:-1;margin-bottom:2px}
-  .scope .lbl{order:-2}
+/* Proper buttons, not links. These are the two actions on the busiest screen
+   in the app and small blue text beside a wall of figures disappears. Built
+   on the same idiom as the row buttons elsewhere, so they look like part of
+   the app rather than a new invention. */
+.scope{gap:10px;padding:11px 12px}
+.scope .act{font-family:var(--mono);font-size:11.5px;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;flex:0 0 auto;cursor:pointer;
+  border:2px solid var(--ink);border-radius:3px;padding:9px 13px;
+  background:none;color:var(--ink)}
+.scope .act.go{background:var(--ink);color:var(--hivis)}
+.scope .act:active{opacity:.82}
+@media (max-width:520px){
+  /* the name gets a line of its own; the buttons keep full tap targets */
+  .scope{flex-wrap:wrap;row-gap:10px}
+  .scope b{flex:1 1 100%;order:-1}
+  .scope .lbl{order:-2;flex:1 1 100%}
+  .scope .act{flex:1 1 0;text-align:center}
 }
 
 /* hover readout on the charts — one element, moved about */
@@ -911,7 +919,7 @@ function shell(inner){
   return `
   <header class="app">
     <div class="hd">
-      <button class="brand" onclick="go(state.site ? 'home' : 'projects')" aria-label="Home">
+      <button class="brand" onclick="goHome()" aria-label="Dashboard">
         <span class="mark">${logo("#FFD400","#14171A",17,34)}</span>
         <h1>SiteCheck<small>CLOUD · WRM</small></h1>
       </button>
@@ -1557,10 +1565,10 @@ function viewProjects(){
     <div class="scope">
       <span class="lbl">Showing</span>
       <b>${esc(state.client || (clients.length === 1 ? clients[0][0] : 'All clients'))}</b>
-      <button class="act" onclick="managementReport()"
-        title="A report covering everything shown on this screen">Report &rsaquo;</button>
+      <button class="act go" onclick="managementReport()"
+        title="A report covering everything shown on this screen">Report</button>
       ${clients.length > 1
-        ? `<button class="act chg" onclick="openClients()">Change &rsaquo;</button>` : ''}
+        ? `<button class="act chg" onclick="openClients()">Change</button>` : ''}
     </div>
 
     <div class="board">
@@ -1794,6 +1802,19 @@ function tiles(){
       <small>${opens>0? opens+' record'+(opens===1?'':'s')+' with items marked fail' : 'No failed items outstanding'}</small></div>
       <span class="pill ${opens>0?'stop':'go'}">${opens>0?'ACTION':'CLEAR'}</span>
     </div>`;
+}
+
+/* The mark in the masthead is the way home from anywhere, and home is the
+   dashboard. It also drops back to everything: having drilled into one client
+   and then into a project, "home" that leaves you inside that client is not
+   home. The current project is kept — it is what the forms carry — so going
+   home and picking up where you left off still works. */
+function goHome(){
+  state.client = null;
+  state.drill = null;
+  state.q = '';
+  go('projects');
+  window.scrollTo(0,0);
 }
 
 function go(v){
