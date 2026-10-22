@@ -508,6 +508,119 @@ input.uidbox{
 }
 input.uidbox::placeholder{color:#6B7178}
 input.uidbox:focus{border-color:var(--hivis);outline:3px solid rgba(255,212,0,.35)}
+
+/* =====================================================================
+   Dashboard
+
+   The opening screen. Three figures that need acting on, a strip of
+   activity, two charts, then the sites. Every number opens the rows it
+   counted — a count you cannot get behind is a statistic, not a tool.
+   ===================================================================== */
+
+/* the noticeboard: hazard tape over a dark plate, like a site board */
+.board{background:var(--ink);color:#fff;border-radius:4px;overflow:hidden;box-shadow:var(--shadow)}
+.board .bt{height:7px;background:repeating-linear-gradient(-45deg,var(--hivis) 0 11px,var(--ink) 11px 22px)}
+.board .bin{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr))}
+.cell{padding:16px;text-align:left;border-right:1px solid #2A2E33;display:block;width:100%;min-width:0;
+  background:none;border-top:0;border-bottom:0;border-left:0;color:inherit;font:inherit}
+.cell:last-child{border-right:0}
+.cell:active{background:#22262B}
+.cell i{display:block;font-style:normal;font-family:var(--mono);font-size:32px;font-weight:700;
+  line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.cell b{display:block;font-size:12.5px;font-weight:800;margin-top:7px;line-height:1.25}
+.cell small{display:block;font-size:11px;color:#9AA0A6;margin-top:2px;line-height:1.35}
+.cell .more{display:inline-flex;align-items:center;gap:5px;margin-top:9px;
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--hivis)}
+.cell.hot i{color:var(--hivis)}
+.cell.ok i{color:#6E7681}
+.cell.ok .more{color:#6E7681}
+/* On a phone, three columns of 118px makes every label wrap and breaks
+   "See the list" across two lines. One per row instead, with the number
+   beside the words rather than above them — same height, far easier to
+   read with the phone in one hand. */
+@media (max-width:430px){
+  .board .bin{grid-template-columns:1fr}
+  .cell{display:grid;grid-template-columns:auto 1fr;column-gap:14px;align-items:center;
+    border-right:0;border-bottom:1px solid #2A2E33;padding:13px 16px}
+  .cell:last-child{border-bottom:0}
+  .cell i{grid-row:1 / span 3;align-self:center;font-size:28px}
+  .cell b{margin-top:0}
+  .cell .more{margin-top:3px}
+}
+.board .foot{border-top:1px solid #2A2E33;padding:10px 16px;display:flex;gap:10px;align-items:center;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:#9AA0A6}
+
+.strip{display:flex;flex-wrap:wrap;margin-top:12px;border:1px solid var(--line);
+  border-radius:4px;background:var(--plate);overflow:hidden;box-shadow:var(--shadow)}
+.strip button{flex:1 1 86px;padding:11px 12px;border:0;border-right:1px solid var(--line);
+  min-width:0;text-align:left;display:block;background:none;font:inherit;color:inherit}
+.strip button:last-child{border-right:0}
+.strip button:active{background:#F1EFEA}
+.strip i{font-style:normal;font-family:var(--mono);font-size:17px;font-weight:700;
+  font-variant-numeric:tabular-nums;margin-right:6px}
+.strip span{font-size:10.5px;color:var(--ink-soft);letter-spacing:.03em}
+.strip span::after{content:" \203A";color:var(--line);font-weight:700}
+
+/* charts */
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:12px}
+.fig{background:var(--plate);border:1px solid var(--line);border-radius:4px;
+  box-shadow:var(--shadow);padding:15px 16px 16px;min-width:0}
+.fig h3{margin:0;font-size:14px;font-weight:800;letter-spacing:.01em}
+.fig .sub{margin:2px 0 14px;font-size:11.5px;color:var(--ink-soft);line-height:1.35}
+.donutwrap{display:flex;justify-content:center;margin-bottom:12px}
+.donut{width:150px;height:150px;display:block}
+.donut text{font-family:var(--mono);fill:var(--ink)}
+.donut .big{font-size:30px;font-weight:700}
+.donut .cap{font-size:9px;letter-spacing:.14em;fill:var(--ink-soft)}
+@media (min-width:560px){
+  .donutpair{display:flex;align-items:center;gap:24px}
+  .donutpair .donutwrap{margin-bottom:0;flex:0 0 auto}
+  .donutpair .key{flex:1;min-width:0}
+}
+.key{display:flex;flex-direction:column;gap:7px}
+.key div{display:flex;align-items:center;gap:9px;font-size:12.5px;min-width:0}
+.key i{width:11px;height:11px;border-radius:2px;flex:0 0 11px}
+.key span{flex:1;min-width:0}
+.key b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:700}
+.bars{display:flex;flex-direction:column;gap:11px}
+.barrow{display:grid;grid-template-columns:1fr auto;gap:3px 10px;align-items:baseline;min-width:0}
+.barrow .lbl{font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.barrow .val{font-family:var(--mono);font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.barrow .track{grid-column:1 / -1;height:10px;background:#E4E1DA;border-radius:5px;overflow:hidden}
+.barrow .track i{display:block;height:100%;border-radius:5px;background:var(--duty)}
+.nofig{font-size:12.5px;color:var(--ink-soft);padding:18px 0;text-align:center}
+
+/* a list of rows that can pair up on a wide screen */
+.rows{display:grid;gap:10px;align-items:start}
+.rows .row{margin-bottom:0}
+.row .age{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-soft);text-align:right;flex:0 0 auto}
+.row .age i{display:block;font-style:normal;font-size:19px;color:var(--ink);line-height:1.1}
+.clear{background:#E8F1EA;border:2px solid var(--go);border-radius:4px;padding:16px;
+  display:flex;gap:13px;align-items:center}
+.clear svg{flex:0 0 26px;color:var(--go)}
+.clear b{display:block;font-size:15px}
+.clear small{color:var(--ink-soft);font-size:12.5px}
+.scope{display:flex;align-items:center;gap:8px;background:var(--plate);border:1px solid var(--line);
+  border-radius:4px;padding:10px 12px;margin-bottom:14px;box-shadow:var(--shadow);width:100%;text-align:left}
+.scope .lbl{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-soft);flex:0 0 auto}
+.scope b{flex:1;min-width:0;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scope .chg{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--duty);flex:0 0 auto}
+
+/* hover readout on the charts — one element, moved about */
+.tip{position:fixed;z-index:60;background:var(--ink);color:#fff;font-size:12px;line-height:1.4;
+  padding:7px 10px;border-radius:3px;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:240px}
+
+/* On a big screen the dashboard takes more room than a form does. A
+   checklist question set across 1200px is miserable to read; a list of
+   sites is not, so only this screen widens. */
+@media (min-width:1200px){
+  main.wide{max-width:1200px}
+  main.wide .rows{grid-template-columns:1fr 1fr}
+  main.wide .figs{grid-template-columns:1fr 1fr}
+}
 </style>
 
 <div id="app"></div>
@@ -630,7 +743,10 @@ const state = { view:'login', uid:'', loginMsg:'', setPwMsg:'', fails:0, lockUnt
                 profile:null, form:null, answers:{}, record:null, sig:'',
                 site:null, projects:[], records:[], filter:null, q:'', editing:null,
                 syncing:false, pendingCount:0, users:[], shares:[], docs:[], audit:[],
-                contractors:[], invites:[] };
+                contractors:[], invites:[],
+                // dashboard: which client is being shown, and which figure
+                // was tapped to open the list behind it
+                client:null, drill:null };
 
 /* =====================================================================
    4. APP
@@ -767,6 +883,7 @@ function render(){
   if (v==='record')   body = viewRecord();
   if (v==='site')     body = viewSite();
   if (v==='projects') body = viewProjects();
+  if (v==='drill')    body = viewDrill();
   if (v==='reports')  body = viewReports();
   if (v==='users')    body = viewUsers();
   if (v==='docs')     body = viewDocs();
@@ -1123,21 +1240,347 @@ async function lock(){
 /* ---- projects ------------------------------------------------------------
    The list comes from the server, so a project created on a laptop appears
    here on a phone. Only managers and superusers can create one.        */
+/* =====================================================================
+   The dashboard
+
+   Everything here is counted on the device from records already pulled
+   down — no new tables, no extra queries. Which also means it reflects
+   exactly what this person is allowed to see: the server decided that
+   when it sent the records, so a site user's dashboard cannot show them
+   a figure from a project nobody shared with them.
+   ===================================================================== */
+
+const DAY_MS = 86400000;
+const DASH = { due: 5, overdue: 7, quiet: 14, window: 30 };
+
+/* One definition of where a site stands on its weekly inspection, used by
+   the donut, the band, the drill-downs and the pill on every row. Two sets
+   of thresholds doing the same job is how a site ends up counted overdue in
+   a chart and labelled "due" on the row underneath it. */
+const GRADE = [
+  { key:'overdue', from:DASH.overdue + 1, label:'Overdue — past 7 days',  pill:'Overdue', cls:'stop', colour:'#C8102E' },
+  { key:'due',     from:DASH.due + 1,     label:'Due this week',          pill:'Due',     cls:'warn', colour:'#E07B00' },
+  { key:'current', from:0,                label:'Current — within 5 days',pill:'Current', cls:'go',   colour:'#007A33' },
+];
+// Never inspected counts as overdue. For a live site that is the thing to
+// chase, not an exemption from being chased.
+const gradeOf = days => days == null ? GRADE[0] : GRADE.find(g => days >= g.from);
+
+const daysSince = ms => ms ? Math.floor((Date.now() - new Date(ms).getTime()) / DAY_MS) : null;
+const agoText = ms => {
+  const d = daysSince(ms);
+  return d == null ? 'never' : d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago';
+};
+
+const clientOf = p => (p.client || '').trim();
+function clientList(){
+  const seen = new Map();
+  (state.projects || []).forEach(p => {
+    const c = clientOf(p);
+    if (c) seen.set(c, (seen.get(c) || 0) + 1);
+  });
+  return [...seen.entries()].sort((a,b) => a[0].localeCompare(b[0]));
+}
+
+function dashStats(client){
+  const projects = (state.projects || []).filter(p => !client || clientOf(p) === client);
+  const ids = new Set(projects.map(p => p.id));
+  const recs = (state.records || []).filter(r => ids.has(r.projectId));
+  const since = n => recs.filter(r => new Date(r.at).getTime() > Date.now() - n*DAY_MS);
+  const count = (f, n) => since(n).filter(r => r.formId === f).length;
+
+  const sites = projects.map(p => {
+    const mine = recs.filter(r => r.projectId === p.id);
+    const lastF02 = mine.filter(r => r.formId === 'f02')
+                        .reduce((m,r) => Math.max(m, new Date(r.at).getTime()), 0);
+    const lastAny = mine.reduce((m,r) => Math.max(m, new Date(r.at).getTime()), 0);
+    const days = lastF02 ? daysSince(lastF02) : null;
+    return { p, days, lastF02: lastF02 || null, lastAny: lastAny || null, grade: gradeOf(days) };
+  });
+
+  const of = k => sites.filter(s => s.grade.key === k)
+                       .sort((a,b) => (b.days ?? 1e6) - (a.days ?? 1e6));
+  const quiet = sites.filter(s => s.lastAny && daysSince(s.lastAny) > DASH.quiet)
+                     .sort((a,b) => daysSince(b.lastAny) - daysSince(a.lastAny));
+  const failed = since(DASH.window).filter(r => r.fails > 0)
+                                   .sort((a,b) => b.fails - a.fails);
+
+  return {
+    client, projects, sites, recs,
+    overdue: of('overdue'), due: of('due'), current: of('current'), quiet, failed,
+    failedItems: failed.reduce((n,r) => n + r.fails, 0),
+    accidents: count('ac01', DASH.window), hazards: count('hz01', DASH.window),
+    inductions:count('f06', DASH.window),  talks:   count('tb01', DASH.window),
+    signedWeek: since(7).length,
+  };
+}
+
+/* ---- the two charts ---------------------------------------------------
+   Drawn by hand rather than with a library: two shapes, no dependency, and
+   nothing to load on a site with one bar of signal.                    */
+function donutSvg(parts, centre, caption){
+  const total = parts.reduce((n,p) => n + p.n, 0) || 1;
+  const R = 54, C = 2 * Math.PI * R, GAP = 2;
+  let at = 0;
+  const arcs = parts.filter(p => p.n > 0).map(p => {
+    const len = (p.n / total) * C;
+    const on = Math.max(len - GAP, 0.6);
+    const seg = `<g data-tip="${esc(p.label)}: ${p.n} of ${total}">
+      <circle cx="75" cy="75" r="${R}" fill="none" stroke="${p.colour}" stroke-width="18"
+        stroke-dasharray="${on} ${C - on}" stroke-dashoffset="${-at}"
+        transform="rotate(-90 75 75)"/></g>`;
+    at += len;
+    return seg;
+  }).join('');
+  return `<div class="donutpair"><div class="donutwrap">
+    <svg class="donut" viewBox="0 0 150 150" role="img" aria-label="${esc(caption)}">
+      <circle cx="75" cy="75" r="${R}" fill="none" stroke="#E4E1DA" stroke-width="18"/>
+      ${arcs}
+      <text class="big" x="75" y="73" text-anchor="middle" dominant-baseline="middle">${centre}</text>
+      <text class="cap" x="75" y="94" text-anchor="middle">${esc(caption)}</text>
+    </svg></div>
+    <div class="key">${parts.map(p => `<div>
+      <i style="background:${p.colour}"></i><span>${esc(p.label)}</span><b>${p.n}</b></div>`).join('')}</div>
+    </div>`;
+}
+
+function barsHtml(rows, unit){
+  if (!rows.length) return `<p class="nofig">Nothing marked fail in the last 30 days.</p>`;
+  const top = Math.max(...rows.map(r => r.n));
+  return `<div class="bars">${rows.map(r => `
+    <div class="barrow" data-tip="${esc(r.label)}: ${r.n} ${unit}">
+      <span class="lbl">${esc(r.label)}</span><span class="val">${r.n}</span>
+      <span class="track"><i style="width:${Math.max((r.n/top)*100, 4)}%"></i></span>
+    </div>`).join('')}</div>`;
+}
+
+function dashFigures(st){
+  // Grouped by client across the whole book, by site once inside one client.
+  const byOwner = {};
+  st.failed.forEach(r => {
+    const p = (state.projects || []).find(x => x.id === r.projectId);
+    const label = st.client ? (p && p.name) : (p && clientOf(p));
+    if (label) byOwner[label] = (byOwner[label] || 0) + r.fails;
+  });
+  const rows = Object.entries(byOwner).map(([label,n]) => ({ label, n }))
+    .sort((a,b) => b.n - a.n).slice(0,5);
+
+  return `<div class="figs">
+    <div class="fig">
+      <h3>Inspections by site</h3>
+      <p class="sub">Where every site stands on its weekly check</p>
+      ${donutSvg([...GRADE].reverse().map(g => ({
+          label:g.label, colour:g.colour,
+          n:{ current:st.current, due:st.due, overdue:st.overdue }[g.key].length,
+        })), st.sites.length, 'SITES')}
+    </div>
+    <div class="fig">
+      <h3>Items marked fail</h3>
+      <p class="sub">Last 30 days, by ${st.client ? 'site' : 'client'} &middot; worst first</p>
+      ${barsHtml(rows, 'items')}
+    </div>
+  </div>`;
+}
+
+/* ---- what sits behind each figure ------------------------------------- */
+const recordDrill = (form, days, title, blurb, empty) => ({
+  title, blurb, empty,
+  rows: st => st.recs
+    .filter(r => (!form || r.formId === form) && new Date(r.at).getTime() > Date.now() - days*DAY_MS)
+    .sort((a,b) => new Date(b.at) - new Date(a.at))
+    .map(r => {
+      const d = new Date(r.at);
+      return { go:`openRecordFromDash('${r.id}')`,
+        code: r.code || '',
+        head: projName(r) || 'Unknown site',
+        sub: `${esc(r.title || '')} · signed by ${esc(r.by || '')}` + (r.fails ? ` · ${r.fails} marked fail` : ''),
+        big: d.getDate(), unit: d.toLocaleDateString('en-GB', { month:'short' }) };
+    }),
+});
+
+const DRILLS = {
+  overdue: {
+    title:'Inspections overdue',
+    blurb:'Sites with no weekly safety inspection in the last 7 days, longest first.',
+    rows: st => st.overdue.map(s => ({ go:`pickProject('${s.p.id}')`,
+      code:s.p.ref || '', head:s.p.name,
+      sub:`${esc(clientOf(s.p) || 'No client')} · ${esc(s.p.address || 'No address')}`,
+      big:s.days == null ? '—' : s.days, unit:s.days == null ? 'never' : 'days' })),
+    empty:'Every site has been inspected within the last 7 days.' },
+
+  fails: {
+    title:'Items marked fail',
+    blurb:'Every record signed in the last 30 days carrying a failed item, worst first.',
+    rows: st => st.failed.map(r => ({ go:`openRecordFromDash('${r.id}')`,
+      code:r.code || '', head:projName(r) || 'Unknown site',
+      sub:`${esc(r.title || '')} · ${ukd(r.at)} · signed by ${esc(r.by || '')}`,
+      big:r.fails, unit:r.fails === 1 ? 'fail' : 'fails' })),
+    empty:'Nothing has been marked fail in the last 30 days.' },
+
+  quiet: {
+    title:'Quiet sites',
+    blurb:'Sites where nothing at all has been recorded for more than 14 days.',
+    rows: st => st.quiet.map(s => ({ go:`pickProject('${s.p.id}')`,
+      code:s.p.ref || '', head:s.p.name,
+      sub:`${esc(clientOf(s.p) || 'No client')} · last record ${agoText(s.lastAny)}`,
+      big:daysSince(s.lastAny), unit:'days' })),
+    empty:'Something has been recorded on every site in the last fortnight.' },
+
+  incidents: recordDrill('ac01', DASH.window, 'Accidents and incidents',
+    'Every accident, near miss and dangerous occurrence reported in the last 30 days.',
+    'Nothing has been reported in the last 30 days.'),
+  hazards: recordDrill('hz01', DASH.window, 'Hazards reported',
+    'Quick captures sent in from site over the last 30 days.',
+    'No hazards have been reported in the last 30 days.'),
+  inducted: recordDrill('f06', DASH.window, 'People inducted',
+    'Site induction records from the last 30 days, gate QR scans included.',
+    'Nobody has been inducted in the last 30 days.'),
+  talks: recordDrill('tb01', DASH.window, 'Toolbox talks',
+    'Talks delivered and signed in the last 30 days.',
+    'No toolbox talks have been recorded in the last 30 days.'),
+  week: recordDrill(null, 7, 'Signed this week',
+    'Everything signed across the last 7 days, newest first.',
+    'Nothing has been signed in the last 7 days.'),
+};
+
+function openDrill(key){ state.drill = key; state.view = 'drill'; render(); }
+function closeDrill(){ state.drill = null; state.view = 'projects'; render(); }
+
+/* Opening a record from the dashboard also moves you into its project.
+   Without this you land on a record with no current project behind it, and
+   Back drops you on a Records screen that does not know where it is. */
+async function openRecordFromDash(id){
+  const r = (state.records || []).find(x => x.id === id);
+  const p = r && (state.projects || []).find(x => x.id === r.projectId);
+  if (p && (!state.site || state.site.id !== p.id)){
+    state.site = p;
+    await set('current', p.id);
+  }
+  openRecord(id);
+}
+
+function viewDrill(){
+  const d = DRILLS[state.drill];
+  if (!d) { state.view = 'projects'; return viewProjects(); }
+  const st = dashStats(state.client);
+  const rows = d.rows(st);
+  const where = st.client || 'All clients';
+
+  return crumb('Dashboard', 'closeDrill()', where) + `<main class="wide">
+    <div class="eyebrow">${esc(d.title)}${rows.length ? ` &middot; ${rows.length}` : ''}</div>
+    <p style="margin:-4px 0 14px;font-size:13px;color:var(--ink-soft);line-height:1.5">${esc(d.blurb)}</p>
+    ${rows.length ? `<div class="rows">` + rows.map(r => `
+        <button class="row" onclick="${r.go}">
+          ${r.code ? `<span class="code">${esc(r.code)}</span>` : ''}
+          <span class="txt"><b>${esc(r.head)}</b><small>${r.sub}</small></span>
+          <span class="age"><i>${r.big}</i>${esc(r.unit)}</span>
+        </button>`).join('') + `</div>`
+      : `<div class="clear">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M20 6L9 17l-5-5"/></svg>
+          <div><b>Nothing to chase</b><small>${esc(d.empty)}</small></div></div>`}
+  </main>`;
+}
+
+/* ---- picking a client -------------------------------------------------
+   Only offered when the person can actually see more than one. A site user
+   with one client has nothing to choose between, so they never see it. */
+function openClients(){
+  const list = clientList();
+  openSheet('Clients', `
+    <button class="row" onclick="setClient('')">
+      <span class="txt"><b>All clients</b><small>Everything you can see &middot; ${list.length} compan${list.length===1?'y':'ies'}</small></span>
+      ${!state.client ? '<span class="pill go">SHOWING</span>' : ''}
+    </button>
+    ${list.map(([name, n], i) => {
+      const st = dashStats(name);
+      const worry = st.overdue.length + st.quiet.length;
+      // The index, not the name. A client called O'Brien Construction would
+      // otherwise close the JS string inside the onclick and break the row.
+      return `<button class="row" onclick="setClientAt(${i})">
+        <span class="code">${n} SITE${n===1?'':'S'}</span>
+        <span class="txt"><b>${esc(name)}</b>
+          <small>${st.recs.length} record${st.recs.length===1?'':'s'} &middot; ${st.signedWeek} signed this week</small></span>
+        ${state.client === name ? '<span class="pill go">SHOWING</span>'
+          : worry ? `<span class="pill stop">${worry} TO CHASE</span>` : '<span class="pill grey">OK</span>'}
+      </button>`;
+    }).join('')}`);
+}
+function setClientAt(i){
+  const row = clientList()[i];
+  setClient(row ? row[0] : '');
+}
+function setClient(name){ state.client = name || null; closeSheet(); state.view = 'projects'; render(); }
+
 function viewProjects(){
-  const back = state.site ? crumb('Home',"go('home')",'Projects') : '';
   const mine = state.projects || [];
-  const list = mine.map(pj => `
-    <button class="row" onclick="pickProject('${pj.id}')">
-      <span class="code">${esc((pj.ref||pj.name||'?').slice(-8).toUpperCase())}</span>
-      <span class="txt"><b>${esc(pj.name)}</b><small>${esc(pj.address||'No address')}</small></span>
-      ${state.site && state.site.id===pj.id ? '<span class="pill go">CURRENT</span>' : ''}
+  const clients = clientList();
+  const st = dashStats(state.client);
+
+  if (!mine.length){
+    return `<main>
+      <div class="banner"><b>No projects yet</b>
+        ${CLOUD.canMakeProjects()
+          ? 'Set one up and every form you fill in will carry its details.'
+          : 'Nothing has been shared with you yet. Ask a manager to share a project.'}</div>
+      ${CLOUD.canMakeProjects() ? `<button class="btn primary" onclick="newProject()">+ New project</button>` : ''}
+      <button class="btn ghost" onclick="syncNow()">Refresh from the server</button>
+    </main>`;
+  }
+
+  const cell = (key, n, title, sub) => `
+    <button class="cell ${n ? 'hot' : 'ok'}" onclick="openDrill('${key}')">
+      <i>${n}</i><b>${title}</b><small>${sub}</small>
+      <span class="more">${n ? 'See the list' : 'Nothing to see'} &rsaquo;</span>
+    </button>`;
+
+  const sites = st.sites.map(s => `
+    <button class="row" onclick="pickProject('${s.p.id}')">
+      <span class="code">${esc((s.p.ref || s.p.name || '?').slice(-8).toUpperCase())}</span>
+      <span class="txt"><b>${esc(s.p.name)}</b><small>${esc(s.p.address || 'No address')}</small></span>
+      ${state.site && state.site.id === s.p.id
+        ? '<span class="pill go">CURRENT</span>'
+        : `<span class="pill ${s.grade.cls}">${s.grade.pill}</span>`}
     </button>`).join('');
-  return back + `<main>
-    ${mine.length ? '<div class="eyebrow">Choose a project</div>' + list
-      : `<div class="banner"><b>No projects yet</b>
-          ${CLOUD.canMakeProjects()
-            ? 'Set one up and every form you fill in will carry its details.'
-            : 'Nothing has been shared with you yet. Ask a manager to share a project.'}</div>`}
+
+  return `<main class="wide">
+    ${clients.length > 1 ? `
+      <button class="scope" onclick="openClients()">
+        <span class="lbl">Showing</span>
+        <b>${esc(state.client || 'All clients')}</b>
+        <span class="chg">Change &rsaquo;</span>
+      </button>` : ''}
+
+    <div class="board">
+      <div class="bt"></div>
+      <div class="bin">
+        ${cell('overdue', st.overdue.length, 'Inspections overdue', 'No weekly check in 7 days')}
+        ${cell('fails',   st.failedItems,    'Items marked fail',   'Last 30 days')}
+        ${cell('quiet',   st.quiet.length,   'Quiet sites',         'Nothing in 14 days')}
+      </div>
+      <div class="foot">
+        <span class="dot" style="background:${st.overdue.length ? 'var(--hivis)' : 'var(--go)'}"></span>
+        ${st.overdue.length
+          ? `${esc(st.overdue[0].p.name)} is the longest &mdash; ${st.overdue[0].days == null ? 'never inspected' : st.overdue[0].days + ' days'}`
+          : 'Every site inspected this week'}
+      </div>
+    </div>
+
+    <div class="strip">
+      ${[['incidents', st.accidents,  'Incidents'],
+         ['hazards',   st.hazards,    'Hazards'],
+         ['inducted',  st.inductions, 'Inducted'],
+         ['talks',     st.talks,      'Talks'],
+         ['week',      st.signedWeek, 'Signed this week']]
+        .map(([k,n,label]) => `<button onclick="openDrill('${k}')"><i>${n}</i><span>${label}</span></button>`).join('')}
+    </div>
+
+    <div class="eyebrow">Where it stands</div>
+    ${dashFigures(st)}
+
+    <div class="eyebrow">${state.client ? 'Their sites' : 'Sites'} &middot; ${st.sites.length}</div>
+    <div class="rows">${sites}</div>
+
     ${CLOUD.canMakeProjects() ? `
       <div class="eyebrow">Add</div>
       <button class="btn primary" onclick="newProject()">+ New project</button>` : ''}
@@ -1149,6 +1592,28 @@ function viewProjects(){
     <button class="btn ghost" onclick="syncNow()">Refresh from the server</button>
   </main>`;
 }
+
+/* One tooltip element, made once and moved about. Making one per hover is
+   how you end up with a trail of them stuck on the page: moving between a
+   bar's label and its track fires the event again, the reference to the
+   previous one is overwritten, and nothing can remove it any more.
+   Mouse only — on a phone there is no hover and a tap drills in. */
+const dashTip = (() => {
+  let el = null, forEl = null;
+  const hide = () => { if (el) el.hidden = true; forEl = null; };
+  document.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse') return;
+    const t = e.target.closest && e.target.closest('[data-tip]');
+    if (!t){ if (forEl) hide(); return; }
+    if (!el){ el = document.createElement('div'); el.className = 'tip'; document.body.appendChild(el); }
+    if (t !== forEl){ forEl = t; el.textContent = t.dataset.tip; el.hidden = false; }
+    el.style.left = Math.min(e.clientX + 14, window.innerWidth - 250) + 'px';
+    el.style.top  = (e.clientY + 18) + 'px';
+  });
+  ['pointerdown','pointercancel','scroll','blur'].forEach(ev =>
+    window.addEventListener(ev, hide, true));
+  return { hide };
+})();
 
 async function pickProject(id){
   state.site = (state.projects||[]).find(x => x.id === id) || null;
