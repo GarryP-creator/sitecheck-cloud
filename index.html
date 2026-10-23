@@ -1007,12 +1007,13 @@ function viewLogin(){
     <button class="btn primary" onclick="tryLogin()" ${dis}>Sign in</button>
 
     <p class="sub" id="loginmsg" style="margin-top:22px;margin-bottom:0">
-      ${state.loginMsg ? esc(state.loginMsg) : 'Works with no signal once you have signed in.'}</p>
+      ${state.loginMsg ? esc(state.loginMsg)
+        : 'Signing in needs signal. After that the app works offline.'}</p>
 
     <hr class="rule">
     <p class="helper"><b>Forgotten your password?</b><br>
-      Nobody can look it up — it is not stored anywhere in readable form.
-      Ask a superuser to set you a temporary one.</p>
+      Contact WRM and they will give you a one-time password to sign back in
+      with. You will then be asked to choose a new one of your own.</p>
   </div></div>`;
 }
 
