@@ -208,9 +208,18 @@ const FORMS = [
       {id:'b6',type:'check',text:'Permit systems and who to report to'},
       {id:'b7',type:'check',text:'Occupational health — dust, noise, vibration, manual handling'},
       {id:'b8',type:'check',text:'Right to stop work if it is not safe, and how to raise a concern'},
+      {id:'b9',type:'check',text:'Risk assessments and method statements for their own work read and understood'},
+      {id:'ba',type:'text',text:'Which RAMS or method statement was briefed',
+       guide:'Name or reference the document. A record that says which RAMS the operative was taken through is worth far more than one that only says they saw something.'},
     ]},
+    /* Three separate confirmations rather than one. Understanding the site
+       induction, understanding the RAMS for your own trade and declaring a
+       medical condition are different things, and a single tick covering all
+       three is weak evidence if any one of them is ever questioned. */
     {title:'Declaration', items:[
-      {id:'c1',type:'check',text:'Operative confirms they understood the induction and any relevant medical conditions have been declared'},
+      {id:'c3',type:'check',text:'Operative confirms they have read and understood the risk assessments and method statements for their work, and had the chance to ask questions'},
+      {id:'c4',type:'check',text:'Operative confirms they understood the site induction'},
+      {id:'c5',type:'check',text:'Any medical condition relevant to this work has been declared'},
       {id:'c2',type:'textarea',text:'Notes'},
     ]}
   ]
