@@ -65,6 +65,10 @@ canvas{width:100%;height:170px;background:#fff;border:1px dashed var(--line);bor
 .btn.go{background:var(--go);color:#fff}
 .btn.ghost{background:transparent;border:1.5px solid var(--line)}
 .btn[disabled]{opacity:.5;cursor:default}
+/* Not disabled — tapping it is how you find out what is still missing. It just
+   stops looking like it is ready to go. */
+.btn.go.waiting{background:var(--concrete);color:#6A6F76;box-shadow:inset 0 0 0 1.5px var(--line)}
+.flash{outline:3px solid var(--stop);outline-offset:4px;border-radius:4px}
 .doc{display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:8px;
   border:1.5px solid var(--duty);border-radius:4px;text-decoration:none;color:var(--ink);background:#F4F8FD}
 .doc .nm{flex:1;font-weight:600}
@@ -148,11 +152,67 @@ async function pickSelfie(input){
   }
 }
 
-function toast(t){
+function toast(t, ms){
   const el = document.createElement('div');
   el.className = 'msg'; el.textContent = t;
   document.body.appendChild(el);
-  setTimeout(()=>el.remove(), 4200);
+  setTimeout(()=>el.remove(), ms || 4200);
+}
+
+/* The one place that decides whether this induction can be sent, so the button
+   and the tap on it can never disagree about why not. */
+function whatIsMissing(){
+  const f = F06();
+  const pack = INFO.pack || [];
+  if (pack.length && !OPENED.length)
+    return { msg:'The site induction pack has to be opened and read first. Tap it to open it, then tick to confirm.', at:'packlist' };
+  if (pack.length && OPENED.length < pack.length)
+    return { msg:'There is still part of the induction pack you have not opened.', at:'packlist' };
+  if (pack.length && !PACKREAD)
+    return { msg:'Tick the box to confirm you have read the site induction pack.', at:'packtick' };
+
+  const missing = [];
+  (f ? f.sections : []).forEach(s => s.items.forEach(it => {
+    const want = it.type === 'confirm' ? 'yes' : it.type === 'check' ? 'pass' : null;
+    if (want && !(ANS[it.id] && ANS[it.id].v === want)) missing.push(it);
+  }));
+  if (missing.length)
+    return { msg:'Answer yes to all ' + missing.length + ' remaining item' + (missing.length>1?'s':'') +
+                 '. If you cannot, ask the site manager to go through ' + (missing.length>1?'them':'it') + ' with you.',
+             at:'t_' + missing[0].id };
+
+  const nameEl = $('#signed');
+  if (nameEl && !(nameEl.value || '').trim()) return { msg:'Type your name to sign.', at:'signed' };
+  if (!dirty) return { msg:'Sign in the box above.', at:'pad' };
+  return null;
+}
+
+function paintDone(){
+  const b = document.getElementById('done'); if (!b) return;
+  const bad = whatIsMissing();
+  b.classList.toggle('waiting', !!bad);
+  // Deliberately NOT aria-disabled. Tapping it is how you find out what is
+  // missing, and telling assistive tech the button is dead would take that
+  // away from the people who need the explanation most. The reason goes in
+  // the name instead, so it is announced rather than hidden.
+  if (bad){
+    b.title = bad.msg;
+    b.setAttribute('aria-label', 'Done — send my induction. Not ready yet: ' + bad.msg);
+  } else {
+    b.removeAttribute('title');
+    b.removeAttribute('aria-label');
+  }
+}
+
+// Say what is missing and take them to it. On a phone the pack is a long way
+// up the page, and "no" with no direction is how a form gets abandoned.
+function nudge(bad){
+  toast(bad.msg, 6500);
+  const el = document.getElementById(bad.at);
+  if (!el) return;
+  el.scrollIntoView({ behavior:'smooth', block:'center' });
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 1800);
 }
 
 async function call(action, extra){
@@ -205,7 +265,7 @@ function draw(){
   const pack = INFO.pack || [];
   if (pack.length){
     html += `<h2>Read this first</h2>
-      <div class="card">
+      <div class="card" id="packlist">
         <p class="guide">The site induction pack for this project. Open it and read it
           through — you will be asked to confirm you have.</p>
         ${pack.map(d => `<a class="doc" id="d_${esc(d.id)}" href="${esc(d.url)}"
@@ -305,7 +365,12 @@ function draw(){
 
   html += `<p class="foot">SiteCheck &middot; the whole site, in your pocket</p>`;
   $('#app').innerHTML = html;
-  if (wantsInduction) pad();
+  if (wantsInduction){
+    pad();
+    const nameEl = $('#signed');
+    if (nameEl) nameEl.addEventListener('input', paintDone);
+    paintDone();
+  }
 }
 
 function it_prefill(){
@@ -323,21 +388,27 @@ function openedDoc(id){
   const t = document.getElementById('packtick');
   const h = document.getElementById('packhint');
   if (all && t){ t.classList.remove('locked'); if (h) h.remove(); }
+  paintDone();
 }
 
 // Opening a document is not the same as reading it, and nothing can prove the
 // difference. What this does stop is the person who never opened it at all.
 function packConfirm(){
   const t = document.getElementById('packtick'); if (!t) return;
-  if (t.classList.contains('locked')){ toast('Open the induction pack first'); return; }
+  if (t.classList.contains('locked')){
+    nudge({ msg:'The site induction pack has to be opened and read first. Tap it to open it.', at:'packlist' });
+    return;
+  }
   PACKREAD = t.classList.toggle('on');
+  paintDone();
 }
 
-function setV(id, v){ ANS[id] = { v }; }
+function setV(id, v){ ANS[id] = { v }; paintDone(); }
 function tick(id, type){
   const el = document.getElementById('t_'+id);
   const on = el.classList.toggle('on');
   ANS[id] = { v: on ? (type === 'confirm' ? 'yes' : 'pass') : '' };
+  paintDone();
 }
 
 /* ---- signature ----------------------------------------------------------- */
@@ -353,7 +424,7 @@ function pad(){
     const t = e.touches ? e.touches[0] : e;
     return [t.clientX - b.left, t.clientY - b.top];
   };
-  const start = e => { drawing = true; dirty = true; ctx.beginPath(); ctx.moveTo(...at(e)); e.preventDefault(); };
+  const start = e => { drawing = true; dirty = true; paintDone(); ctx.beginPath(); ctx.moveTo(...at(e)); e.preventDefault(); };
   const move  = e => { if (!drawing) return; ctx.lineTo(...at(e)); ctx.stroke(); e.preventDefault(); };
   const end   = () => { drawing = false; };
   c.addEventListener('mousedown', start); c.addEventListener('mousemove', move);
@@ -398,26 +469,12 @@ async function sendRams(){
 
 /* ---- submit -------------------------------------------------------------- */
 async function submit(){
-  const f = F06();
   const name = ($('#signed').value || '').trim();
-  if (!name){ toast('Type your name to sign'); return; }
-  if (!dirty){ toast('Please sign in the box'); return; }
-  if ((INFO.pack || []).length && !PACKREAD){
-    toast('Please confirm you have read the site induction pack');
-    return;
-  }
 
-  // Every confirmation has to be ticked. This is an induction — a half-read
-  // one is worth less than none, because it looks like it was done.
-  const missing = [];
-  f.sections.forEach(s => s.items.forEach(it => {
-    const want = it.type === 'confirm' ? 'yes' : it.type === 'check' ? 'pass' : null;
-    if (want && !(ANS[it.id] && ANS[it.id].v === want)) missing.push(it.text);
-  }));
-  if (missing.length){
-    toast('Please confirm all ' + missing.length + ' remaining item' + (missing.length>1?'s':''));
-    return;
-  }
+  // This is an induction — a half-read one is worth less than none, because it
+  // looks like it was done.
+  const bad = whatIsMissing();
+  if (bad){ nudge(bad); return; }
 
   // Checked here as well as on the server so somebody at a gate in the rain
   // gets told what is missing before waiting on an upload to fail.
