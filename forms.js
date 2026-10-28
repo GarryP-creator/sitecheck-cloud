@@ -193,7 +193,7 @@ const FORMS = [
   desc:'One record per operative',
   // Anything filed in this folder against the project is shown at the top of
   // the form, to be opened and read before the questions are answered.
-  packFolder:'Induction pack',
+  packFolder:'Site Induction Pack',
   sections:[
     {title:'Operative', items:[
       {id:'a1',type:'text',text:'Full name'},
