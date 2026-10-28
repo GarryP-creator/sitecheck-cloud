@@ -2162,9 +2162,72 @@ async function startForm(id){
       await DB.del('draft:' + id);
     }
   }
+  await loadFormPack(state.form);
   state.view = 'fill';
   render();
 }
+
+/* ---- the reading a form asks for first ---------------------------------
+   A form can name a document folder it wants read before the questions are
+   answered. Whatever is filed there against this project is shown at the top
+   of the form. Loaded BEFORE the screen is drawn rather than after: the
+   inputs are painted once and then left alone, so a re-render part way
+   through a form would blank what is already on it. */
+async function loadFormPack(form){
+  state.pack = []; state.packOpened = []; state.packWhy = '';
+  if (!form || !form.packFolder || !state.site) return;
+  if (!navigator.onLine){ state.packWhy = 'offline'; return; }
+  try {
+    const docs = await Promise.race([
+      CLOUD.listDocuments(state.site.id),
+      new Promise((_, no) => setTimeout(() => no(new Error('slow')), 6000)),
+    ]);
+    state.pack = (docs || []).filter(d => d.folder === form.packFolder);
+    if (!state.pack.length) state.packWhy = 'none';
+  } catch(e){ state.packWhy = 'failed'; }
+}
+
+function packPanel(){
+  const f = state.form;
+  if (!f || !f.packFolder) return '';
+  const head = `<div class="eyebrow">Read this first</div>`;
+  if (!state.pack.length){
+    const why = state.packWhy === 'offline'
+      ? 'There is no signal, so the pack cannot be opened here. Read it before coming to site, or ask the site manager for a paper copy.'
+      : state.packWhy === 'failed'
+      ? 'The pack could not be loaded just now. Check the connection, or ask the site manager for a copy.'
+      : `Nothing has been filed against this project yet. Upload it under Documents &rarr; ${esc(f.packFolder)} and it will show up here.`;
+    return head + `<div class="banner"><b>No ${esc(f.packFolder.toLowerCase())} to show</b>${why}</div>`;
+  }
+  const opened = state.packOpened || [];
+  return head + `<p class="guide" style="margin:-4px 0 10px">The induction pack for
+      this project. Open it and go through it before answering the questions below.</p>
+    <div class="rows">${state.pack.map(d => `
+      <button class="row" type="button" onclick="openPackDoc('${d.id}')">
+        <span class="code">${esc(((d.name||'').split('.').pop()||'DOC').slice(0,4).toUpperCase())}</span>
+        <span class="txt"><b>${esc(d.name)}</b><small>Tap to open and read it through</small></span>
+        <span class="pill ${opened.includes(d.id) ? 'go' : 'grey'}" id="pt_${d.id}">
+          ${opened.includes(d.id) ? 'OPENED' : 'OPEN'}</span>
+      </button>`).join('')}</div>`;
+}
+
+/* Opening a document is not the same as reading it, and nothing here can tell
+   the difference. Marking it only shows the inductor what has been put in
+   front of the person. */
+async function openPackDoc(id){
+  const d = (state.pack || []).find(x => x.id === id);
+  if (!d) return;
+  try {
+    const url = await CLOUD.documentUrl(d.path);
+    window.open(url, '_blank');
+    if (!(state.packOpened || []).includes(id)){
+      state.packOpened.push(id);
+      const tag = document.getElementById('pt_' + id);
+      if (tag){ tag.textContent = 'OPENED'; tag.className = 'pill go'; }
+    }
+  } catch(e){ toast('Could not open that — check the connection'); }
+}
+
 function viewFill(){
   const f = state.form;
   let n = 0;
@@ -2174,6 +2237,7 @@ function viewFill(){
   `).join('');
   return crumb('Cancel',"confirmExit()", f.code) + `<main>
     <div class="banner"><b>${esc(f.title)}</b>${esc(state.site.name||'No site set')} · ${ukd(Date.now())}</div>
+    ${packPanel()}
     ${body}
     <div class="eyebrow">Signature</div>
     <div class="q">
@@ -3803,7 +3867,7 @@ async function saveShares(){
 /* ---- documents ------------------------------------------------------------ */
 /* The five standard folders are offered first so filing stays consistent,
    but anything already in use is offered too, and a new one can be made. */
-const FOLDERS = ['Toolbox talks','RAMS','Inspections','Accidents','Project documents'];
+const FOLDERS = ['Induction pack','Toolbox talks','RAMS','Inspections','Accidents','Project documents'];
 
 function allFolders(){
   const used = [...new Set((state.docs||[]).map(d => d.folder).filter(Boolean))];

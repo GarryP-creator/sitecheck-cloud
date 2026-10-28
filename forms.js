@@ -191,6 +191,9 @@ const FORMS = [
   id:'f06', code:'F06', cat:'checklist',
   title:'Site Induction Record',
   desc:'One record per operative',
+  // Anything filed in this folder against the project is shown at the top of
+  // the form, to be opened and read before the questions are answered.
+  packFolder:'Induction pack',
   sections:[
     {title:'Operative', items:[
       {id:'a1',type:'text',text:'Full name'},
@@ -208,6 +211,7 @@ const FORMS = [
       {id:'b6',type:'check',text:'Permit systems and who to report to'},
       {id:'b7',type:'check',text:'Occupational health — dust, noise, vibration, manual handling'},
       {id:'b8',type:'check',text:'Right to stop work if it is not safe, and how to raise a concern'},
+      {id:'bb',type:'check',text:'Site induction pack issued and read through'},
       {id:'b9',type:'check',text:'Risk assessments and method statements for their own work read and understood'},
       {id:'ba',type:'text',text:'Which RAMS or method statement was briefed',
        guide:'Name or reference the document. A record that says which RAMS the operative was taken through is worth far more than one that only says they saw something.'},
