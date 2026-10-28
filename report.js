@@ -87,11 +87,13 @@ const REPORT = (() => {
 
       Object.entries(r.answers || {}).forEach(([id, a]) => {
         if (!a || typeof a !== 'object') return;
-        if (a.v === 'pass' || a.v === 'fail'){
-          if (b){ b.checked++; if (a.v === 'pass') b.pass++; }
-          if (a.v === 'pass') checksPassed++; else checksFailed++;
+        const good = a.v === 'pass' || a.v === 'yes';
+        const bad  = a.v === 'fail' || a.v === 'no';
+        if (good || bad){
+          if (b){ b.checked++; if (good) b.pass++; }
+          if (good) checksPassed++; else checksFailed++;
         }
-        if (a.v === 'fail'){
+        if (bad){
           const key = r.formId + '|' + id;
           const text = (qText[r.formId] || {})[id];
           if (!text) return;                       // an item that no longer exists

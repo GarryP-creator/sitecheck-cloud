@@ -178,7 +178,8 @@ const PDF = (() => {
     }
     countChecks(){
       let n = 0;
-      this.form.sections.forEach(s => s.items.forEach(i => { if (i.type === 'check') n++; }));
+      this.form.sections.forEach(s => s.items.forEach(i => {
+        if (i.type === 'check' || i.type === 'confirm') n++; }));
       return n;
     }
 
@@ -195,7 +196,7 @@ const PDF = (() => {
     row(item, ans, shade){
       const statusW = 24;
       const qW = this.CW - statusW - 6;
-      const isCheck = item.type === 'check';
+      const isCheck = item.type === 'check' || item.type === 'confirm';
       const lines = this.wrap(item.text, qW, 9);
       const note = isCheck && ans.note ? this.wrap(ans.note, qW - 3, 7.6, 'italic') : [];
 
@@ -213,7 +214,7 @@ const PDF = (() => {
       if (shade){ this.d.setFillColor(...FAINT); this.d.rect(this.M, this.y - 3.4, this.CW, h, 'F'); }
 
       // fail rows get a red edge so they're findable at a glance
-      if (isCheck && ans.v === 'fail'){
+      if (isCheck && (ans.v === 'fail' || ans.v === 'no')){
         this.d.setFillColor(...STOP); this.d.rect(this.M, this.y - 3.4, 1.4, h, 'F');
       }
 
@@ -227,7 +228,8 @@ const PDF = (() => {
       const rx = this.M + this.CW - 3;
       const sy = this.y; this.y = top;
       if (isCheck){
-        const m = { pass: ['PASS', GO], fail: ['FAIL', STOP], na: ['N/A', GREY] }[ans.v] || ['—', GREY];
+        const m = { pass: ['PASS', GO], fail: ['FAIL', STOP], na: ['N/A', GREY],
+                    yes: ['YES', GO],  no:  ['NO',   STOP] }[ans.v] || ['—', GREY];
         this.txt(m[0], rx, { size: 8.5, style: 'bold', align: 'right', col: m[1], spacing: 0.3 });
       } else if (item.type === 'risk'){
         const v = ans.v || {}; const b = band(v.score || 1);

@@ -269,9 +269,10 @@ function draw(){
   if (wantsInduction){
     f.sections.forEach(sec => {
       html += `<h2>${esc(sec.title)}</h2><div class="card">`;
+      if (sec.intro) html += `<p class="guide">${esc(sec.intro)}</p>`;
       sec.items.forEach(it => {
-        if (it.type === 'check'){
-          html += `<div class="tick" id="t_${it.id}" onclick="tick('${it.id}')">
+        if (it.type === 'check' || it.type === 'confirm'){
+          html += `<div class="tick" id="t_${it.id}" onclick="tick('${it.id}','${it.type}')">
             <div class="box">&#10003;</div><span>${esc(it.text)}</span></div>`;
         } else {
           const pre = it.id === 'a1' ? INFO.person.name : '';
@@ -333,10 +334,10 @@ function packConfirm(){
 }
 
 function setV(id, v){ ANS[id] = { v }; }
-function tick(id){
+function tick(id, type){
   const el = document.getElementById('t_'+id);
   const on = el.classList.toggle('on');
-  ANS[id] = { v: on ? 'pass' : '' };
+  ANS[id] = { v: on ? (type === 'confirm' ? 'yes' : 'pass') : '' };
 }
 
 /* ---- signature ----------------------------------------------------------- */
@@ -410,7 +411,8 @@ async function submit(){
   // one is worth less than none, because it looks like it was done.
   const missing = [];
   f.sections.forEach(s => s.items.forEach(it => {
-    if (it.type === 'check' && !(ANS[it.id] && ANS[it.id].v === 'pass')) missing.push(it.text);
+    const want = it.type === 'confirm' ? 'yes' : it.type === 'check' ? 'pass' : null;
+    if (want && !(ANS[it.id] && ANS[it.id].v === want)) missing.push(it.text);
   }));
   if (missing.length){
     toast('Please confirm all ' + missing.length + ' remaining item' + (missing.length>1?'s':''));

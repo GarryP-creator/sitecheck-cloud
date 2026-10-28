@@ -224,6 +224,8 @@ main{max-width:600px;margin:0 auto;padding:16px 16px 120px}
 .seg button[aria-pressed="true"][data-v="pass"]{background:var(--go);border-color:var(--go);color:#fff}
 .seg button[aria-pressed="true"][data-v="fail"]{background:var(--stop);border-color:var(--stop);color:#fff}
 .seg button[aria-pressed="true"][data-v="na"]{background:var(--ink-soft);border-color:var(--ink-soft);color:#fff}
+.seg button[aria-pressed="true"][data-v="yes"]{background:var(--go);border-color:var(--go);color:#fff}
+.seg button[aria-pressed="true"][data-v="no"]{background:var(--stop);border-color:var(--stop);color:#fff}
 
 input[type=text],input[type=number],input[type=date],input[type=tel],input[type=password],select,textarea{
   width:100%;padding:13px;border:2px solid var(--line);border-radius:3px;background:#fff;
@@ -2244,6 +2246,7 @@ function viewFill(){
   let n = 0;
   const body = f.sections.map(sec => `
     <div class="eyebrow">${esc(sec.title)}</div>
+    ${sec.intro ? `<p class="guide" style="margin:-4px 0 10px">${esc(sec.intro)}</p>` : ''}
     ${sec.items.map(it => { n++; return question(it, n); }).join('')}
   `).join('');
   return crumb('Cancel',"confirmExit()", f.code) + `<main>
@@ -2274,6 +2277,17 @@ function question(it, n){
     case 'check':
       ctrl = `<div class="seg" role="group">
         ${[['pass','Pass'],['fail','Fail'],['na','N/A']].map(([v,l])=>
+          `<button type="button" data-v="${v}" aria-pressed="false" onclick="pick('${id}','${v}',this)">${l}</button>`).join('')}
+      </div>
+      <div class="note"><input type="text" placeholder="Note (optional)" oninput="note('${id}',this.value)"></div>`;
+      break;
+    /* An induction asks whether someone has read and understood something.
+       That is a yes or a no — "Fail" is the wrong word for a person, and N/A
+       is not on offer. An inspection item, which genuinely passes or fails,
+       still uses 'check'. */
+    case 'confirm':
+      ctrl = `<div class="seg" role="group">
+        ${[['yes','Yes'],['no','No']].map(([v,l])=>
           `<button type="button" data-v="${v}" aria-pressed="false" onclick="pick('${id}','${v}',this)">${l}</button>`).join('')}
       </div>
       <div class="note"><input type="text" placeholder="Note (optional)" oninput="note('${id}',this.value)"></div>`;
@@ -2765,11 +2779,37 @@ async function submitForm(){
   if(!state.sig){ toast('Tap the signature box to sign'); return; }
 
   const f = state.form;
+
+  /* A "no" against "have you read and understood" is not a record to be
+     signed — it is a piece of the induction that has not landed yet. Say
+     which ones, and send them back rather than letting it through. */
+  const unsure = [];
+  f.sections.forEach(s => s.items.forEach(i => {
+    if (i.type === 'confirm' && (state.answers[i.id] || {}).v === 'no') unsure.push(i.text);
+  }));
+  if (unsure.length){
+    openSheet('Not ready to sign yet', `
+      <div class="banner"><b>${unsure.length} thing${unsure.length>1?'s have':' has'} been marked No</b>
+        An induction cannot be signed while anything is still a No. Go back over
+        ${unsure.length>1?'these':'this'} with whoever is inducting you, or ask them to explain
+        ${unsure.length>1?'them':'it'} again, and change ${unsure.length>1?'them':'it'} to Yes
+        once you are happy.</div>
+      <div class="rows">${unsure.map(t => `
+        <div class="row" style="pointer-events:none">
+          <span class="txt"><b>${esc(t)}</b></span>
+          <span class="pill stop">NO</span></div>`).join('')}</div>
+      <button class="btn primary" onclick="closeSheet()">Go back to the form</button>`);
+    return;
+  }
+
   const at = new Date().toISOString();
   const seq = String(state.records.filter(r=>r.formId===f.id).length + 1).padStart(3,'0');
   const ref = `WRM-${f.code}-${at.slice(0,10).replace(/-/g,'')}-${seq}`;
   let fails = 0;
-  f.sections.forEach(s=>s.items.forEach(i=>{ if(state.answers[i.id]?.v==='fail') fails++; }));
+  f.sections.forEach(s=>s.items.forEach(i=>{
+    const v = state.answers[i.id]?.v;
+    if (v === 'fail' || v === 'no') fails++;
+  }));
 
   const rec = {
     id: crypto.randomUUID(), ref, formId:f.id, code:f.code, title: recordTitle(f, state.answers),
@@ -3627,7 +3667,8 @@ function MANUAL_ANSWERS(){
   const f = (typeof FORMS !== 'undefined' ? FORMS : []).find(x => x.id === 'f06');
   const a = {};
   if (f) f.sections.forEach(s => s.items.forEach(it => {
-    if (it.type === 'check') a[it.id] = { v: 'pass' };
+    if (it.type === 'check')   a[it.id] = { v: 'pass' };
+    if (it.type === 'confirm') a[it.id] = { v: 'yes' };
   }));
   return a;
 }
@@ -4271,6 +4312,8 @@ function answerText(item, a){
   if (!a) return '';
   if (item.type === 'check')
     return { pass:'Pass', fail:'FAIL', na:'N/A' }[a.v] || 'Not answered';
+  if (item.type === 'confirm')
+    return { yes:'Yes', no:'NO' }[a.v] || 'Not answered';
   if (item.type === 'risk'){
     const v = a.v || {};
     return v.score ? `${riskBand(v.score).l} ${v.score} (L${v.l} x S${v.s})` : '';
@@ -4338,11 +4381,11 @@ function sheetRecords(){
     const detail = [];
     f.sections.forEach(sec => sec.items.forEach(i => {
       total++;
-      if (i.type !== 'check') return;
+      if (i.type !== 'check' && i.type !== 'confirm') return;
       const a = (r.answers||{})[i.id] || {};
-      if (a.v === 'pass') pass++;
+      if (a.v === 'pass' || a.v === 'yes') pass++;
       else if (a.v === 'na') na++;
-      else if (a.v === 'fail'){
+      else if (a.v === 'fail' || a.v === 'no'){
         fail++;
         detail.push(i.text + (a.note ? ' — ' + a.note : ''));
       } else blank++;
@@ -4387,7 +4430,7 @@ function sheetActions(){
     const f = FORMS.find(x => x.id === r.formId); if (!f) return;
     f.sections.forEach(sec => sec.items.forEach(i => {
       const a = (r.answers||{})[i.id];
-      if (a && a.v === 'fail')
+      if (a && (a.v === 'fail' || a.v === 'no'))
         rows.push([D(r.at), projName(r), r.ref, r.title, sec.title, i.text, a.note||'', r.by, 'Open', '', '']);
     }));
   });
@@ -4623,8 +4666,9 @@ function viewRecord(){
   </div></div>`;
 }
 function answerHtml(i,a){
-  if(i.type==='check'){
-    const m = {pass:['go','Pass'],fail:['stop','Fail'],na:['grey','N/A']}[a.v] || ['grey','Not answered'];
+  if(i.type==='check' || i.type==='confirm'){
+    const m = {pass:['go','Pass'],fail:['stop','Fail'],na:['grey','N/A'],
+               yes:['go','Yes'],no:['stop','No']}[a.v] || ['grey','Not answered'];
     return `<div style="margin-top:8px"><span class="pill ${m[0]}">${m[1]}</span>${a.note?`<p class="guide" style="margin-top:8px">${esc(a.note)}</p>`:''}</div>`;
   }
   if(i.type==='file'){
